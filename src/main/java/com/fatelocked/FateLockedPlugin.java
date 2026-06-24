@@ -134,6 +134,97 @@ public class FateLockedPlugin extends Plugin
         }
     }
 
+    @Subscribe
+    public void onGameStateChanged(GameStateChanged ev)
+    {
+        if (ev.getGameState() == GameState.LOGGED_IN)
+        {
+            lastChunk = null; // force re-announce on next tick
+            lastAccountWarned = null; // re-check the bound account for this login
+        }
+        else if (ev.getGameState() == GameState.LOGIN_SCREEN)
+        {
+            lastAccountWarned = null;
+        }
+    }
+
+    /** Normalise an OSRS name for comparison (RuneLite uses non-breaking spaces). */
+    static String normName(String s)
+    {
+        return s == null ? "" : s.replace((char)0x00A0, ' ').trim().toLowerCase();
+    }
+
+    /**
+     * Warn (once per login) if the bound account doesn't match the logged-in
+     * character — the run's progress is tied to one OSRS account.
+     */
+    private void checkBoundAccount()
+    {
+        if (!config.warnAccountMismatch()) return;
+        FateLockedBundle.RunState st = bundle.getState();
+        String bound = st == null ? null : st.getLinkedAccount();
+        if (bound == null || bound.trim().isEmpty()) return;
+
+        Player local = client.getLocalPlayer();
+        String current = local == null ? null : local.getName();
+        if (current == null || current.isEmpty()) return;
+
+        if (normName(bound).equals(normName(current))) return;
+        if (normName(bound).equals(lastAccountWarned)) return;
+        lastAccountWarned = normName(bound);
+
+        ChatMessageBuilder msg = new ChatMessageBuilder()
+            .append(ChatColorType.HIGHLIGHT).append("[Fate Locked] ")
+            .append(ChatColorType.NORMAL).append("This run is bound to ")
+            .append(ChatColorType.HIGHLIGHT).append(bound)
+            .append(ChatColorType.NORMAL).append(" — you're logged in as ")
+            .append(ChatColorType.HIGHLIGHT).append(current)
+            .append(ChatColorType.NORMAL).append(".");
+        chatMessageManager.queue(QueuedMessage.builder()
+            .type(ChatMessageType.GAMEMESSAGE)
+            .runeLiteFormattedMessage(msg.build())
+            .build());
+        client.playSoundEffect(2277);
+    }
+
+    @Subscribe
+    public void onGameTick(GameTick tick)
+    {
+        Player local = client.getLocalPlayer();
+        if (local == null) return;
+
+        // Once per login, flag if the character doesn't match the bound account.
+        checkBoundAccount();
+
+        WorldPoint wp = local.getWorldLocation();
+        if (wp == null) return;
+
+        CanonicalChunk current = CanonicalChunk.of(wp);
+        FateLockedBundle b = bundle;
+        FateLockedBundle.LockState lock = b.lockStateAt(current);
+        String label = b.labelAt(current);
+        boolean unlocked = lock == FateLockedBundle.LockState.UNLOCKED;
+
+
+        boolean changed = !current.equals(lastChunk);
+        if (changed)
+        {
+            panel.update(b, current, label, unlocked);
+            if (config.chatOnEnter())
+            {
+                announceEntry(current, label, unlocked);
+            }
+            // Visual flash only on the transition INTO locked territory.
+            if (lock == FateLockedBundle.LockState.LOCKED
+                && lastLockState != FateLockedBundle.LockState.LOCKED)
+            {
+                lockedFlashUntil = System.currentTimeMillis() + LOCKED_FLASH_MS;
+            }
+            lastChunk = current;
+            lastLockState = lock;
+        }
+    }
+
     /**
      * Tag right-click menu entries whose target stands in a locked chunk with a
      * red (LOCKED) marker — the "are you sure?" before you ever click.
