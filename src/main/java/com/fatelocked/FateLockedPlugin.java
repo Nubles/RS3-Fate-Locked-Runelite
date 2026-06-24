@@ -1,0 +1,366 @@
+package com.fatelocked;
+
+import com.google.inject.Provides;
+import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.ChatMessageType;
+import net.runelite.api.Client;
+import net.runelite.api.GameState;
+import net.runelite.api.MenuAction;
+import net.runelite.api.NPC;
+import net.runelite.api.Player;
+import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GameTick;
+import net.runelite.api.events.MenuEntryAdded;
+import net.runelite.client.callback.ClientThread;
+import net.runelite.client.chat.ChatColorType;
+import net.runelite.client.chat.ChatMessageBuilder;
+import net.runelite.client.chat.ChatMessageManager;
+import net.runelite.client.chat.QueuedMessage;
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ConfigChanged;
+import net.runelite.client.plugins.Plugin;
+import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
+import net.runelite.client.ui.overlay.OverlayManager;
+
+import javax.inject.Inject;
+import java.awt.Color;
+import java.awt.Graphics2D;
+import java.awt.RenderingHints;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.WatchEvent;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
+import java.nio.file.StandardWatchEventKinds;
+
+@Slf4j
+@PluginDescriptor(
+    name = "Fate Locked Ironman",
+    description = "Renders authored chunks from the Fate Locked tracker and warns on locked-region transitions",
+    tags = { "chunk", "ironman", "locked", "map", "fate" }
+)
+public class FateLockedPlugin extends Plugin
+{
+    @Inject private Client client;
+    @Inject private ClientThread clientThread;
+    @Inject private FateLockedConfig config;
+    @Inject private OverlayManager overlayManager;
+    @Inject private FateLockedWorldMapOverlay worldMapOverlay;
+    @Inject private FateLockedSceneOverlay sceneOverlay;
+    @Inject private FateLockedMinimapOverlay minimapOverlay;
+    @Inject private FateLockedHudOverlay hudOverlay;
+    @Inject private FateLockedFlashOverlay flashOverlay;
+    @Inject private ChatMessageManager chatMessageManager;
+    @Inject private ClientToolbar clientToolbar;
+    @Inject private FateLockedPanel panel;
+
+    @Getter private volatile FateLockedBundle bundle = FateLockedBundle.empty();
+
+    /** How long the locked-entry screen flash lasts. */
+    public static final long LOCKED_FLASH_MS = 1600;
+    @Getter private volatile long lockedFlashUntil;
+
+    private CanonicalChunk lastChunk;
+    private FateLockedBundle.LockState lastLockState;
+    private NavigationButton navButton;
+    private Thread watcherThread;
+    private volatile boolean watcherStop;
+    /** Last account name we warned about, so we nag at most once per character. */
+    private String lastAccountWarned;
+
+
+    @Provides
+    FateLockedConfig provideConfig(ConfigManager configManager)
+    {
+        return configManager.getConfig(FateLockedConfig.class);
+    }
+
+    @Override
+    protected void startUp()
+    {
+        overlayManager.add(worldMapOverlay);
+        overlayManager.add(sceneOverlay);
+        overlayManager.add(minimapOverlay);
+        overlayManager.add(hudOverlay);
+        overlayManager.add(flashOverlay);
+
+        panel.setCallbacks(this::applyPastedBundle, () -> clientThread.invoke(this::reloadBundle));
+        navButton = NavigationButton.builder()
+            .tooltip("Fate Locked Ironman")
+            .icon(createIcon())
+            .priority(7)
+            .panel(panel)
+            .build();
+        clientToolbar.addNavigation(navButton);
+
+        reloadBundle();
+        startWatcher();
+    }
+
+    @Override
+    protected void shutDown()
+    {
+        overlayManager.remove(worldMapOverlay);
+        overlayManager.remove(sceneOverlay);
+        overlayManager.remove(minimapOverlay);
+        overlayManager.remove(hudOverlay);
+        overlayManager.remove(flashOverlay);
+        if (navButton != null)
+        {
+            clientToolbar.removeNavigation(navButton);
+            navButton = null;
+        }
+        stopWatcher();
+        bundle = FateLockedBundle.empty();
+        lastChunk = null;
+    }
+
+    @Subscribe
+    public void onConfigChanged(ConfigChanged ev)
+    {
+        if (!FateLockedConfig.GROUP.equals(ev.getGroup())) return;
+        if ("bundlePath".equals(ev.getKey()))
+        {
+            reloadBundle();
+            stopWatcher();
+            startWatcher();
+        }
+    }
+
+    /**
+     * Tag right-click menu entries whose target stands in a locked chunk with a
+     * red (LOCKED) marker — the "are you sure?" before you ever click.
+     */
+    @Subscribe
+    public void onMenuEntryAdded(MenuEntryAdded event)
+    {
+        if (!config.tagLockedMenus()) return;
+        FateLockedBundle b = bundle;
+        if (b.getRegionChunks().isEmpty()) return;
+
+        WorldPoint target = menuTargetWorldPoint(event);
+        if (target == null) return;
+
+        if (b.lockStateAt(CanonicalChunk.of(target)) == FateLockedBundle.LockState.LOCKED)
+        {
+            String t = event.getTarget();
+            if (t != null && !t.contains("(LOCKED)"))
+            {
+                event.getMenuEntry().setTarget(t + " <col=ef4444>(LOCKED)</col>");
+            }
+        }
+    }
+
+    /** Resolve the world tile a menu entry points at, where feasible. */
+    private WorldPoint menuTargetWorldPoint(MenuEntryAdded event)
+    {
+        MenuAction action = MenuAction.of(event.getType());
+        switch (action)
+        {
+            case NPC_FIRST_OPTION:
+            case NPC_SECOND_OPTION:
+            case NPC_THIRD_OPTION:
+            case NPC_FOURTH_OPTION:
+            case NPC_FIFTH_OPTION:
+            case EXAMINE_NPC:
+            {
+                NPC npc = event.getMenuEntry().getNpc();
+                return npc == null ? null : npc.getWorldLocation();
+            }
+            case GAME_OBJECT_FIRST_OPTION:
+            case GAME_OBJECT_SECOND_OPTION:
+            case GAME_OBJECT_THIRD_OPTION:
+            case GAME_OBJECT_FOURTH_OPTION:
+            case GAME_OBJECT_FIFTH_OPTION:
+            case EXAMINE_OBJECT:
+            case GROUND_ITEM_FIRST_OPTION:
+            case GROUND_ITEM_SECOND_OPTION:
+            case GROUND_ITEM_THIRD_OPTION:
+            case GROUND_ITEM_FOURTH_OPTION:
+            case GROUND_ITEM_FIFTH_OPTION:
+            case EXAMINE_ITEM_GROUND:
+            case WALK:
+            {
+                int sceneX = event.getActionParam0();
+                int sceneY = event.getActionParam1();
+                if (sceneX < 0 || sceneY < 0) return null;
+                return WorldPoint.fromScene(client, sceneX, sceneY, client.getPlane());
+            }
+            default:
+                return null;
+        }
+    }
+
+    private void announceEntry(CanonicalChunk chunk, String region, boolean unlocked)
+    {
+        ChatMessageBuilder msg = new ChatMessageBuilder()
+            .append(ChatColorType.HIGHLIGHT).append("[Fate Locked] ")
+            .append(ChatColorType.NORMAL).append("Chunk ")
+            .append("(" + chunk.getCx() + ", " + chunk.getCy() + ")");
+
+        if (region == null)
+        {
+            msg.append(ChatColorType.NORMAL).append(" — unauthored");
+        }
+        else if (unlocked)
+        {
+            msg.append(ChatColorType.NORMAL).append(" · ")
+               .append(ChatColorType.HIGHLIGHT).append(region)
+               .append(ChatColorType.NORMAL).append(" ✓ unlocked");
+        }
+        else
+        {
+            msg.append(ChatColorType.NORMAL).append(" · ")
+               .append(ChatColorType.HIGHLIGHT).append(region)
+               .append(ChatColorType.NORMAL).append(" ⚠ LOCKED");
+        }
+
+        chatMessageManager.queue(QueuedMessage.builder()
+            .type(ChatMessageType.GAMEMESSAGE)
+            .runeLiteFormattedMessage(msg.build())
+            .build());
+
+        if (!unlocked && region != null && config.warnOnLocked())
+        {
+            client.playSoundEffect(2277); // death squelch — good "you done messed up" cue
+        }
+    }
+
+    private void reloadBundle()
+    {
+        String p = config.bundlePath();
+        if (p == null || p.trim().isEmpty())
+        {
+            bundle = FateLockedBundle.empty();
+            refreshPanel();
+            return;
+        }
+        try
+        {
+            bundle = FateLockedBundle.loadFromFile(Paths.get(p));
+            log.info("Fate Locked bundle loaded: {} regions, {} unlocked",
+                bundle.getRegionChunks().size(), bundle.getUnlockedRegions().size());
+        }
+        catch (IOException | RuntimeException ex)
+        {
+            log.warn("Failed to load bundle at {}: {}", p, ex.getMessage());
+            bundle = FateLockedBundle.empty();
+        }
+        refreshPanel();
+    }
+
+    /** Load a bundle from JSON pasted into the side panel. */
+    private void applyPastedBundle(String json)
+    {
+        try
+        {
+            FateLockedBundle parsed = FateLockedBundle.loadFromJson(json);
+            bundle = parsed;
+            log.info("Fate Locked bundle imported from paste: {} regions", parsed.getRegionChunks().size());
+            panel.flashStatus("imported " + parsed.getRegionChunks().size() + " regions", true);
+            refreshPanel();
+        }
+        catch (RuntimeException ex)
+        {
+            log.warn("Pasted bundle could not be parsed: {}", ex.getMessage());
+            panel.flashStatus("import failed — invalid JSON", false);
+        }
+    }
+
+    /** Recompute the player's current chunk and push everything to the panel. */
+    private void refreshPanel()
+    {
+        CanonicalChunk current = null;
+        Player local = client.getLocalPlayer();
+        if (local != null && local.getWorldLocation() != null)
+        {
+            current = CanonicalChunk.of(local.getWorldLocation());
+        }
+        String label = current == null ? null : bundle.labelAt(current);
+        boolean unlocked = current != null
+            && bundle.lockStateAt(current) == FateLockedBundle.LockState.UNLOCKED;
+        panel.update(bundle, current, label, unlocked);
+    }
+
+    private static BufferedImage createIcon()
+    {
+        BufferedImage img = new BufferedImage(24, 24, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        // Key bow
+        g.setColor(new Color(245, 158, 11));
+        g.fillOval(2, 7, 11, 11);
+        g.setColor(new Color(15, 17, 21));
+        g.fillOval(5, 10, 5, 5);
+        // Shaft + teeth
+        g.setColor(new Color(245, 158, 11));
+        g.fillRect(12, 11, 10, 3);
+        g.fillRect(17, 14, 2, 4);
+        g.fillRect(20, 14, 2, 4);
+        g.dispose();
+        return img;
+    }
+
+    // ---- hot-reload watcher --------------------------------------------------
+
+    private void startWatcher()
+    {
+        if (!config.autoReload()) return;
+        String p = config.bundlePath();
+        if (p == null || p.trim().isEmpty()) return;
+
+        Path file = Paths.get(p);
+        Path parent = file.getParent();
+        if (parent == null) return;
+
+        watcherStop = false;
+        watcherThread = new Thread(() -> {
+            try (WatchService ws = parent.getFileSystem().newWatchService())
+            {
+                parent.register(ws, StandardWatchEventKinds.ENTRY_MODIFY,
+                    StandardWatchEventKinds.ENTRY_CREATE);
+                while (!watcherStop)
+                {
+                    WatchKey key = ws.poll();
+                    if (key == null)
+                    {
+                        Thread.sleep(500);
+                        continue;
+                    }
+                    for (WatchEvent<?> ev : key.pollEvents())
+                    {
+                        Object ctx = ev.context();
+                        if (ctx instanceof Path && ((Path) ctx).getFileName().equals(file.getFileName()))
+                        {
+                            clientThread.invoke(this::reloadBundle);
+                        }
+                    }
+                    if (!key.reset()) break;
+                }
+            }
+            catch (Exception ex)
+            {
+                log.debug("Bundle watcher stopped: {}", ex.getMessage());
+            }
+        }, "fate-locked-bundle-watcher");
+        watcherThread.setDaemon(true);
+        watcherThread.start();
+    }
+
+    private void stopWatcher()
+    {
+        watcherStop = true;
+        if (watcherThread != null)
+        {
+            watcherThread.interrupt();
+            watcherThread = null;
+        }
+    }
+}

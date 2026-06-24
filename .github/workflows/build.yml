@@ -1,0 +1,33 @@
+name: Build
+
+# Compile-check the plugin (Hub-compliant build). The RuneLite Plugin Hub builds
+# from this repo's root on submission; this mirrors that so breakage is caught here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '11'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.5'
+      - name: Build shadow jar
+        run: gradle shadowJar --no-daemon
+      - name: Upload jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: fatelocked-plugin
+          path: build/libs/fatelocked-*-all.jar
+          if-no-files-found: error

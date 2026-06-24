@@ -1,0 +1,59 @@
+/*
+ * Fate Locked Ironman — RuneLite external plugin.
+ *
+ * Build with:   ./gradlew shadowJar
+ * Sideload:     copy build/libs/fatelocked-*-all.jar into ~/.runelite/sideloaded-plugins/
+ *
+ * Hub submission: replace the `id 'com.gradleup.shadow'` step with the standard
+ * runelite-plugin-hub build template — the plugin source itself is hub-compliant
+ * (no external network calls, purely local JSON loading).
+ */
+
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow' version '8.3.5'
+}
+
+group 'com.fatelocked'
+// Overridable from CI for tagged releases: gradle shadowJar -PpluginVersion=0.2.0
+version = project.findProperty('pluginVersion') ?: '0.1.0'
+sourceCompatibility = JavaVersion.VERSION_11
+targetCompatibility = JavaVersion.VERSION_11
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://repo.runelite.net' }
+}
+
+def runeLiteVersion = 'latest.release'
+
+dependencies {
+    // RuneLite's client brings Guice / Gson / SLF4J transitively (and its repo
+    // hosts the guice `no_aop` variant). Declaring Guice explicitly here pins the
+    // module to Maven Central, which has no `guice-5.1.0-no_aop.jar`, breaking the
+    // build — so we let those come from the client dependency, per the official
+    // RuneLite plugin template.
+    compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
+    compileOnly 'org.projectlombok:lombok:1.18.30'
+    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+
+    testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion
+    testImplementation 'junit:junit:4.13.2'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+shadowJar {
+    archiveClassifier.set('all')
+}
+
+jar {
+    manifest {
+        attributes(
+            'Plugin-Class': 'com.fatelocked.FateLockedPlugin',
+            'Implementation-Version': project.version
+        )
+    }
+}
