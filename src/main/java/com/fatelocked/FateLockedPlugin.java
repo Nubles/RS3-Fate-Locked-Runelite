@@ -34,12 +34,13 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.WatchEvent;
-import java.nio.file.WatchKey;
-import java.nio.file.WatchService;
-import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.attribute.FileTime;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @PluginDescriptor(
@@ -62,6 +63,7 @@ public class FateLockedPlugin extends Plugin
     @Inject private ClientToolbar clientToolbar;
     @Inject private FateLockedPanel panel;
     @Inject private Gson gson;
+    @Inject private ScheduledExecutorService executor;
 
     @Getter private volatile FateLockedBundle bundle = FateLockedBundle.empty();
 
@@ -72,8 +74,8 @@ public class FateLockedPlugin extends Plugin
     private CanonicalChunk lastChunk;
     private FateLockedBundle.LockState lastLockState;
     private NavigationButton navButton;
-    private Thread watcherThread;
-    private volatile boolean watcherStop;
+    private ScheduledFuture<?> watcherFuture;
+    private FileTime watcherLastModified;
     /** Last account name we warned about, so we nag at most once per character. */
     private String lastAccountWarned;
 
@@ -410,50 +412,40 @@ public class FateLockedPlugin extends Plugin
         if (p == null || p.trim().isEmpty()) return;
 
         Path file = Paths.get(p);
-        Path parent = file.getParent();
-        if (parent == null) return;
+        watcherLastModified = lastModified(file);
 
-        watcherStop = false;
-        watcherThread = new Thread(() -> {
-            try (WatchService ws = parent.getFileSystem().newWatchService())
+        // Poll the bundle file's modification time on RuneLite's shared scheduler,
+        // reloading on the client thread when it changes. Avoids spawning our own
+        // thread (plugin-hub forbids Thread.sleep / Thread.interrupt).
+        watcherFuture = executor.scheduleWithFixedDelay(() -> {
+            FileTime now = lastModified(file);
+            if (now != null && !now.equals(watcherLastModified))
             {
-                parent.register(ws, StandardWatchEventKinds.ENTRY_MODIFY,
-                    StandardWatchEventKinds.ENTRY_CREATE);
-                while (!watcherStop)
-                {
-                    WatchKey key = ws.poll();
-                    if (key == null)
-                    {
-                        Thread.sleep(500);
-                        continue;
-                    }
-                    for (WatchEvent<?> ev : key.pollEvents())
-                    {
-                        Object ctx = ev.context();
-                        if (ctx instanceof Path && ((Path) ctx).getFileName().equals(file.getFileName()))
-                        {
-                            clientThread.invoke(this::reloadBundle);
-                        }
-                    }
-                    if (!key.reset()) break;
-                }
+                watcherLastModified = now;
+                clientThread.invoke(this::reloadBundle);
             }
-            catch (Exception ex)
-            {
-                log.debug("Bundle watcher stopped: {}", ex.getMessage());
-            }
-        }, "fate-locked-bundle-watcher");
-        watcherThread.setDaemon(true);
-        watcherThread.start();
+        }, 1, 1, TimeUnit.SECONDS);
     }
 
     private void stopWatcher()
     {
-        watcherStop = true;
-        if (watcherThread != null)
+        if (watcherFuture != null)
         {
-            watcherThread.interrupt();
-            watcherThread = null;
+            watcherFuture.cancel(false);
+            watcherFuture = null;
+        }
+    }
+
+    /** Last-modified time of the bundle file, or null if it doesn't exist yet. */
+    private static FileTime lastModified(Path file)
+    {
+        try
+        {
+            return Files.exists(file) ? Files.getLastModifiedTime(file) : null;
+        }
+        catch (IOException ex)
+        {
+            return null;
         }
     }
 }
