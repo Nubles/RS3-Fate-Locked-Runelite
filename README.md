@@ -51,7 +51,7 @@ overlay, all three colors).
 
 ### Easiest — download the prebuilt jar (no build tools)
 
-1. Grab `fatelocked-0.1.0-all.jar` from the repo's
+1. Grab `fatelocked-0.1.0.jar` from the repo's
    [**latest plugin release**](https://github.com/Nubles/OSRS-Fate-Locked/releases/tag/runelite-plugin-latest)
    (auto-built by CI on every change).
 2. Drop it into `~/.runelite/sideloaded-plugins/` (create the folder if needed).
@@ -66,8 +66,8 @@ overlay, all three colors).
 ### Build it yourself (development)
 
 1. `cd runelite-plugin`
-2. `gradle shadowJar` (needs JDK 11 + Gradle)
-3. Copy `build/libs/fatelocked-0.1.0-all.jar` into `~/.runelite/sideloaded-plugins/`.
+2. `gradle build` (needs JDK 11 + Gradle)
+3. Copy `build/libs/fatelocked-0.1.0.jar` into `~/.runelite/sideloaded-plugins/`.
 4. Launch RuneLite with `--developer-mode`.
 
 ### Cutting a versioned release

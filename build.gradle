@@ -1,21 +1,20 @@
 /*
  * Fate Locked Ironman — RuneLite external plugin.
  *
- * Build with:   ./gradlew shadowJar
- * Sideload:     copy build/libs/fatelocked-*-all.jar into ~/.runelite/sideloaded-plugins/
+ * Standard RuneLite Plugin Hub build template. The Hub builds this in a sandbox
+ * with dependency verification on and provides the RuneLite runtime (client,
+ * Gson, Guice, SLF4J) itself, so the plugin must NOT shade/fat-jar its deps.
  *
- * Hub submission: replace the `id 'com.gradleup.shadow'` step with the standard
- * runelite-plugin-hub build template — the plugin source itself is hub-compliant
- * (no external network calls, purely local JSON loading).
+ * Build a sideload jar:  ./gradlew jar  → build/libs/*.jar
+ * Sideload:              copy it into ~/.runelite/sideloaded-plugins/
  */
 
 plugins {
     id 'java'
-    id 'com.gradleup.shadow' version '8.3.5'
 }
 
 group 'com.fatelocked'
-// Overridable from CI for tagged releases: gradle shadowJar -PpluginVersion=0.2.0
+// Overridable from CI for tagged releases: gradle jar -PpluginVersion=0.2.0
 version = project.findProperty('pluginVersion') ?: '0.1.0'
 sourceCompatibility = JavaVersion.VERSION_11
 targetCompatibility = JavaVersion.VERSION_11
@@ -29,10 +28,8 @@ def runeLiteVersion = 'latest.release'
 
 dependencies {
     // RuneLite's client brings Guice / Gson / SLF4J transitively (and its repo
-    // hosts the guice `no_aop` variant). Declaring Guice explicitly here pins the
-    // module to Maven Central, which has no `guice-5.1.0-no_aop.jar`, breaking the
-    // build — so we let those come from the client dependency, per the official
-    // RuneLite plugin template.
+    // hosts the guice `no_aop` variant). These are provided by the RuneLite
+    // runtime at load time, so everything is compileOnly — no shading.
     compileOnly group: 'net.runelite', name: 'client', version: runeLiteVersion
     compileOnly 'org.projectlombok:lombok:1.18.30'
     annotationProcessor 'org.projectlombok:lombok:1.18.30'
@@ -43,17 +40,4 @@ dependencies {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
-}
-
-shadowJar {
-    archiveClassifier.set('all')
-}
-
-jar {
-    manifest {
-        attributes(
-            'Plugin-Class': 'com.fatelocked.FateLockedPlugin',
-            'Implementation-Version': project.version
-        )
-    }
 }

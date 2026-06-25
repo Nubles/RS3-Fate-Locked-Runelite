@@ -23,11 +23,11 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.5'
-      - name: Build shadow jar
-        run: gradle shadowJar --no-daemon
+      - name: Build jar
+        run: gradle build --no-daemon
       - name: Upload jar
         uses: actions/upload-artifact@v4
         with:
           name: fatelocked-plugin
-          path: build/libs/fatelocked-*-all.jar
+          path: build/libs/*.jar
           if-no-files-found: error
