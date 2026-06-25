@@ -414,9 +414,9 @@ public class FateLockedPlugin extends Plugin
         Path file = Paths.get(p);
         watcherLastModified = lastModified(file);
 
-        // Poll the bundle file's modification time on RuneLite's shared scheduler,
-        // reloading on the client thread when it changes. Avoids spawning our own
-        // thread (plugin-hub forbids Thread.sleep / Thread.interrupt).
+        // Poll the bundle file's modification time on RuneLite's shared executor,
+        // reloading via the client callback when it changes. No background worker
+        // of our own and no blocking calls.
         watcherFuture = executor.scheduleWithFixedDelay(() -> {
             FileTime now = lastModified(file);
             if (now != null && !now.equals(watcherLastModified))
