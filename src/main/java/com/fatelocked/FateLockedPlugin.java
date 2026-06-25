@@ -1,5 +1,6 @@
 package com.fatelocked;
 
+import com.google.gson.Gson;
 import com.google.inject.Provides;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -60,6 +61,7 @@ public class FateLockedPlugin extends Plugin
     @Inject private ChatMessageManager chatMessageManager;
     @Inject private ClientToolbar clientToolbar;
     @Inject private FateLockedPanel panel;
+    @Inject private Gson gson;
 
     @Getter private volatile FateLockedBundle bundle = FateLockedBundle.empty();
 
@@ -335,7 +337,7 @@ public class FateLockedPlugin extends Plugin
         }
         try
         {
-            bundle = FateLockedBundle.loadFromFile(Paths.get(p));
+            bundle = FateLockedBundle.loadFromFile(gson, Paths.get(p));
             log.info("Fate Locked bundle loaded: {} regions, {} unlocked",
                 bundle.getRegionChunks().size(), bundle.getUnlockedRegions().size());
         }
@@ -352,7 +354,7 @@ public class FateLockedPlugin extends Plugin
     {
         try
         {
-            FateLockedBundle parsed = FateLockedBundle.loadFromJson(json);
+            FateLockedBundle parsed = FateLockedBundle.loadFromJson(gson, json);
             bundle = parsed;
             log.info("Fate Locked bundle imported from paste: {} regions", parsed.getRegionChunks().size());
             panel.flashStatus("imported " + parsed.getRegionChunks().size() + " regions", true);

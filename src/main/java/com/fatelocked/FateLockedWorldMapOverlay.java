@@ -3,8 +3,9 @@ package com.fatelocked;
 import net.runelite.api.Client;
 import net.runelite.api.Point;
 import net.runelite.api.RenderOverview;
+import net.runelite.api.widgets.ComponentID;
+import net.runelite.api.widgets.InterfaceID;
 import net.runelite.api.widgets.Widget;
-import net.runelite.api.widgets.WidgetInfo;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
@@ -46,7 +47,7 @@ public class FateLockedWorldMapOverlay extends Overlay
         setPosition(OverlayPosition.DYNAMIC);
         setPriority(OverlayPriority.LOW);
         setLayer(OverlayLayer.MANUAL);
-        drawAfterInterface(WidgetInfo.WORLD_MAP_VIEW.getGroupId());
+        drawAfterInterface(InterfaceID.WORLD_MAP);
     }
 
     @Override
@@ -56,7 +57,7 @@ public class FateLockedWorldMapOverlay extends Overlay
         FateLockedBundle bundle = plugin.getBundle();
         if (bundle.getRegionChunks().isEmpty()) return null;
 
-        Widget worldMap = client.getWidget(WidgetInfo.WORLD_MAP_VIEW);
+        Widget worldMap = client.getWidget(ComponentID.WORLD_MAP_MAPVIEW);
         if (worldMap == null) return null;
         RenderOverview ro = client.getRenderOverview();
         if (ro == null) return null;

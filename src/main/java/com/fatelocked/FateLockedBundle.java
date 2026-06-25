@@ -97,15 +97,15 @@ public class FateLockedBundle
             Collections.<CanonicalChunk, String>emptyMap());
     }
 
-    public static FateLockedBundle loadFromFile(Path path) throws IOException, JsonSyntaxException
+    public static FateLockedBundle loadFromFile(Gson gson, Path path) throws IOException, JsonSyntaxException
     {
         String json = new String(Files.readAllBytes(path));
-        return loadFromJson(json);
+        return loadFromJson(gson, json);
     }
 
-    public static FateLockedBundle loadFromJson(String json) throws JsonSyntaxException
+    public static FateLockedBundle loadFromJson(Gson gson, String json) throws JsonSyntaxException
     {
-        RawBundle raw = new Gson().fromJson(json, RawBundle.class);
+        RawBundle raw = gson.fromJson(json, RawBundle.class);
         if (raw == null || raw.chunks == null)
         {
             return empty();
