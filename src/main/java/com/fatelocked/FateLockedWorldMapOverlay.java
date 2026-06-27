@@ -10,6 +10,8 @@ import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.OverlayPriority;
+import net.runelite.client.ui.overlay.tooltip.Tooltip;
+import net.runelite.client.ui.overlay.tooltip.TooltipManager;
 
 import javax.inject.Inject;
 import java.awt.BasicStroke;
@@ -40,6 +42,7 @@ public class FateLockedWorldMapOverlay extends Overlay
     @Inject private Client client;
     @Inject private FateLockedPlugin plugin;
     @Inject private FateLockedConfig config;
+    @Inject private TooltipManager tooltipManager;
 
     @Inject
     FateLockedWorldMapOverlay()
@@ -91,8 +94,38 @@ public class FateLockedWorldMapOverlay extends Overlay
             }
         }
 
+        if (config.worldMapTooltip())
+        {
+            addHoverTooltip(bundle, bounds, ro);
+        }
+
         graphics.setClip(prevClip);
         return null;
+    }
+
+    /** Show the area name + lock status for the authored chunk under the cursor. */
+    private void addHoverTooltip(FateLockedBundle bundle, Rectangle bounds, RenderOverview ro)
+    {
+        Point mouse = client.getMouseCanvasPosition();
+        if (mouse == null || !bounds.contains(mouse.getX(), mouse.getY())) return;
+
+        float pixelsPerTile = ro.getWorldMapZoom();
+        if (pixelsPerTile <= 0) return;
+        Point centre = ro.getWorldMapPosition();
+        if (centre == null) return;
+
+        // Invert worldMapRectForChunk: pixel → world tile → chunk.
+        double tileX = centre.getX() + (mouse.getX() - bounds.getCenterX()) / pixelsPerTile;
+        double tileY = centre.getY() - (mouse.getY() - bounds.getCenterY()) / pixelsPerTile;
+        CanonicalChunk hovered = new CanonicalChunk(
+            ((int) Math.floor(tileX)) >> 6, ((int) Math.floor(tileY)) >> 6);
+
+        String label = bundle.labelAt(hovered);
+        if (label == null) return; // unauthored — nothing to say
+
+        String status = bundle.lockStateAt(hovered) == FateLockedBundle.LockState.UNLOCKED
+            ? "<col=2ee59d>Unlocked</col>" : "<col=ef4444>Locked</col>";
+        tooltipManager.add(new Tooltip(label + "</br>" + status));
     }
 
     /**

@@ -128,6 +128,17 @@ public interface FateLockedConfig extends Config
         return true;
     }
 
+    @ConfigItem(
+        keyName = "rollNudges",
+        name = "Roll reminders",
+        description = "Chat reminder on level-up, quest, diary and combat-achievement completion that it may be worth a roll in the tracker",
+        section = warningsSection
+    )
+    default boolean rollNudges()
+    {
+        return true;
+    }
+
     @ConfigSection(
         name = "Rendering",
         description = "How chunks are drawn on the map and in-world",
@@ -164,6 +175,28 @@ public interface FateLockedConfig extends Config
         section = renderingSection
     )
     default boolean drawMinimap()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "highlightLockedBorders",
+        name = "Highlight locked borders",
+        description = "Outline the edges of your current chunk that border a locked chunk",
+        section = renderingSection
+    )
+    default boolean highlightLockedBorders()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "worldMapTooltip",
+        name = "World map hover tooltip",
+        description = "Hover an authored chunk on the world map to see its area name and lock status",
+        section = renderingSection
+    )
+    default boolean worldMapTooltip()
     {
         return true;
     }

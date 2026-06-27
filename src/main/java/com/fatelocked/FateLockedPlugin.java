@@ -10,10 +10,14 @@ import net.runelite.api.GameState;
 import net.runelite.api.MenuAction;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
+import net.runelite.api.Skill;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuEntryAdded;
+import net.runelite.api.events.StatChanged;
+import net.runelite.api.events.WidgetLoaded;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatColorType;
 import net.runelite.client.chat.ChatMessageBuilder;
@@ -39,6 +43,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.FileTime;
+import java.util.EnumMap;
+import java.util.Map;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -78,6 +84,11 @@ public class FateLockedPlugin extends Plugin
     private ScheduledFuture<?> watcherFuture;
     private Path watcherLoadedPath;
     private FileTime watcherLastModified;
+
+    /** Last seen real level per skill, to detect genuine level-ups for roll nudges. */
+    private final Map<Skill, Integer> lastLevels = new EnumMap<>(Skill.class);
+    /** Widget group shown when a quest is completed (the reward scroll). */
+    private static final int QUEST_COMPLETED_GROUP_ID = 153;
     /** Last account name we warned about, so we nag at most once per character. */
     private String lastAccountWarned;
 
@@ -148,11 +159,79 @@ public class FateLockedPlugin extends Plugin
         {
             lastChunk = null; // force re-announce on next tick
             lastAccountWarned = null; // re-check the bound account for this login
+            // The client fires StatChanged for every skill at login; clearing
+            // here lets those re-establish the baseline without firing nudges.
+            lastLevels.clear();
         }
         else if (ev.getGameState() == GameState.LOGIN_SCREEN)
         {
             lastAccountWarned = null;
         }
+    }
+
+    // ── Roll reminders ────────────────────────────────────────────────────────
+    // Read-only nudges: a chat line when something that may grant a roll in the
+    // tracker happens (level-up, quest, diary, combat achievement). Purely
+    // informational — the plugin never acts on the player's behalf.
+
+    @Subscribe
+    public void onStatChanged(StatChanged ev)
+    {
+        if (!config.rollNudges()) return;
+        Skill skill = ev.getSkill();
+        int level = ev.getLevel();
+        Integer prev = lastLevels.put(skill, level);
+        // prev == null is the login baseline; only nudge on a real increase.
+        if (prev != null && level > prev)
+        {
+            nudge("Leveled " + skillName(skill) + " to " + level + " — may be worth a roll.");
+        }
+    }
+
+    @Subscribe
+    public void onChatMessage(ChatMessage ev)
+    {
+        if (!config.rollNudges()) return;
+        if (ev.getType() != ChatMessageType.GAMEMESSAGE && ev.getType() != ChatMessageType.SPAM) return;
+        String m = ev.getMessage() == null ? "" : ev.getMessage().toLowerCase();
+
+        if (m.contains("combat task:"))
+        {
+            nudge("Combat achievement complete — may be worth a roll.");
+        }
+        else if (m.contains("completed all of the") && m.contains("tasks"))
+        {
+            nudge("Achievement diary tier complete — may be worth a roll.");
+        }
+    }
+
+    @Subscribe
+    public void onWidgetLoaded(WidgetLoaded ev)
+    {
+        if (!config.rollNudges()) return;
+        if (ev.getGroupId() == QUEST_COMPLETED_GROUP_ID)
+        {
+            nudge("Quest complete — may be worth a roll.");
+        }
+    }
+
+    /** Friendly skill name, e.g. "Woodcutting" from the WOODCUTTING enum. */
+    private static String skillName(Skill skill)
+    {
+        String n = skill.getName();
+        return n.isEmpty() ? n : Character.toUpperCase(n.charAt(0)) + n.substring(1).toLowerCase();
+    }
+
+    /** Queue a one-line informational chat nudge (client-side only). */
+    private void nudge(String text)
+    {
+        ChatMessageBuilder msg = new ChatMessageBuilder()
+            .append(ChatColorType.HIGHLIGHT).append("[Fate Locked] ")
+            .append(ChatColorType.NORMAL).append(text);
+        chatMessageManager.queue(QueuedMessage.builder()
+            .type(ChatMessageType.GAMEMESSAGE)
+            .runeLiteFormattedMessage(msg.build())
+            .build());
     }
 
     /** Normalise an OSRS name for comparison (RuneLite uses non-breaking spaces). */

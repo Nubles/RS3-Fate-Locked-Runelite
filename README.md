@@ -15,9 +15,14 @@ touch content you haven't unlocked yet.
   not all of Asgarnia's. Mirrors the web app's map exactly, including
   always-free Misthalin.
 - **World map overlay.** Every authored chunk tinted green (unlocked) or red
-  (locked), per chunk, on the full world map.
+  (locked), per chunk, on the full world map — hover any authored chunk to see
+  its area name and lock status.
 - **Scene + minimap overlays.** The 64×64 chunk you're in is outlined in the
   game view and tinted on the minimap with the same color coding.
+- **Locked-border highlight.** The edges of your current chunk that border a
+  locked chunk are traced in red, so you see exactly which way not to go.
+- **Roll reminders.** A chat nudge on level-up, quest, achievement-diary and
+  combat-achievement completion that it may be worth a roll in the tracker.
 - **Locked right-click tags.** Menu entries for NPCs, objects, ground items and
   walks that target a locked chunk get a red **(LOCKED)** tag appended — the
   warning arrives *before* you click, where feasible.
