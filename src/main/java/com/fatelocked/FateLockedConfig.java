@@ -118,6 +118,17 @@ public interface FateLockedConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "tagLockedTeleports",
+        name = "Tag teleports to locked chunks",
+        description = "Append a red (LOCKED) tag to teleport options (spells, jewellery, tablets) whose destination is in a locked chunk",
+        section = warningsSection
+    )
+    default boolean tagLockedTeleports()
+    {
+        return true;
+    }
+
+    @ConfigItem(
         keyName = "showHud",
         name = "Show in-game HUD",
         description = "Overlay with keys, fate points, active buff, next goal and current chunk status",

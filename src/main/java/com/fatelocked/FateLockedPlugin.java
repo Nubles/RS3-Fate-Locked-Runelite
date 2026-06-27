@@ -319,15 +319,36 @@ public class FateLockedPlugin extends Plugin
     @Subscribe
     public void onMenuEntryAdded(MenuEntryAdded event)
     {
-        if (!config.tagLockedMenus()) return;
+        if (!config.tagLockedMenus() && !config.tagLockedTeleports()) return;
         FateLockedBundle b = bundle;
         if (b.getRegionChunks().isEmpty()) return;
 
         MenuEntry entry = event.getMenuEntry();
-        WorldPoint target = menuTargetWorldPoint(entry);
-        if (target == null) return;
-        if (b.lockStateAt(CanonicalChunk.of(target)) != FateLockedBundle.LockState.LOCKED) return;
+        boolean locked = false;
 
+        // Tile-based: NPC/object/ground/walk entries standing in a locked chunk.
+        if (config.tagLockedMenus())
+        {
+            WorldPoint target = menuTargetWorldPoint(entry);
+            if (target != null
+                && b.lockStateAt(CanonicalChunk.of(target)) == FateLockedBundle.LockState.LOCKED)
+            {
+                locked = true;
+            }
+        }
+
+        // Name-based: teleports (spells/jewellery/tablets) whose destination chunk
+        // is locked — these carry no world tile, so resolve by name.
+        if (!locked && config.tagLockedTeleports())
+        {
+            CanonicalChunk dest = Teleports.destinationChunk(entry.getOption(), entry.getTarget());
+            if (dest != null && b.lockStateAt(dest) == FateLockedBundle.LockState.LOCKED)
+            {
+                locked = true;
+            }
+        }
+
+        if (!locked) return;
         String t = entry.getTarget();
         String base = t == null ? "" : t;
         if (!base.contains("(LOCKED)"))
