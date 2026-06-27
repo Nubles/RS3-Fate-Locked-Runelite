@@ -33,6 +33,7 @@ import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -75,6 +76,7 @@ public class FateLockedPlugin extends Plugin
     private FateLockedBundle.LockState lastLockState;
     private NavigationButton navButton;
     private ScheduledFuture<?> watcherFuture;
+    private Path watcherLoadedPath;
     private FileTime watcherLastModified;
     /** Last account name we warned about, so we nag at most once per character. */
     private String lastAccountWarned;
@@ -130,7 +132,8 @@ public class FateLockedPlugin extends Plugin
     public void onConfigChanged(ConfigChanged ev)
     {
         if (!FateLockedConfig.GROUP.equals(ev.getGroup())) return;
-        if ("bundlePath".equals(ev.getKey()))
+        String key = ev.getKey();
+        if ("bundlePath".equals(key) || "autoReload".equals(key) || "autoDetectDownloads".equals(key))
         {
             reloadBundle();
             stopWatcher();
@@ -330,8 +333,13 @@ public class FateLockedPlugin extends Plugin
 
     private void reloadBundle()
     {
-        String p = config.bundlePath();
-        if (p == null || p.trim().isEmpty())
+        Path file = effectiveBundlePath();
+        // Mark what we're about to read up-front so the watcher doesn't re-fire
+        // every tick if the file is missing or fails to parse.
+        watcherLoadedPath = file;
+        watcherLastModified = file == null ? null : lastModified(file);
+
+        if (file == null)
         {
             bundle = FateLockedBundle.empty();
             refreshPanel();
@@ -339,16 +347,43 @@ public class FateLockedPlugin extends Plugin
         }
         try
         {
-            bundle = FateLockedBundle.loadFromFile(gson, Paths.get(p));
-            log.info("Fate Locked bundle loaded: {} regions, {} unlocked",
-                bundle.getRegionChunks().size(), bundle.getUnlockedRegions().size());
+            bundle = FateLockedBundle.loadFromFile(gson, file);
+            log.info("Fate Locked bundle loaded from {}: {} regions, {} unlocked",
+                file, bundle.getRegionChunks().size(), bundle.getUnlockedRegions().size());
         }
         catch (IOException | RuntimeException ex)
         {
-            log.warn("Failed to load bundle at {}: {}", p, ex.getMessage());
+            log.warn("Failed to load bundle at {}: {}", file, ex.getMessage());
             bundle = FateLockedBundle.empty();
         }
         refreshPanel();
+    }
+
+    /**
+     * The bundle file to read: the configured path if set, otherwise (when
+     * auto-detect is on) the newest fate-locked-bundle file in Downloads.
+     */
+    private Path effectiveBundlePath()
+    {
+        String p = config.bundlePath();
+        if (p != null && !p.trim().isEmpty()) return Paths.get(p.trim());
+        if (config.autoDetectDownloads()) return findNewestDownloadBundle();
+        return null;
+    }
+
+    /** Newest fate-locked-bundle-*.json in the user's Downloads folder, or null. */
+    private Path findNewestDownloadBundle()
+    {
+        File dir = new File(System.getProperty("user.home"), "Downloads");
+        File[] files = dir.listFiles((d, name) ->
+            name.startsWith("fate-locked-bundle") && name.toLowerCase().endsWith(".json"));
+        if (files == null || files.length == 0) return null;
+        File newest = null;
+        for (File f : files)
+        {
+            if (newest == null || f.lastModified() > newest.lastModified()) newest = f;
+        }
+        return newest == null ? null : newest.toPath();
     }
 
     /** Load a bundle from JSON pasted into the side panel. */
@@ -408,20 +443,18 @@ public class FateLockedPlugin extends Plugin
     private void startWatcher()
     {
         if (!config.autoReload()) return;
-        String p = config.bundlePath();
-        if (p == null || p.trim().isEmpty()) return;
 
-        Path file = Paths.get(p);
-        watcherLastModified = lastModified(file);
-
-        // Poll the bundle file's modification time on RuneLite's shared executor,
-        // reloading via the client callback when it changes. No background worker
-        // of our own and no blocking calls.
+        // Poll the effective bundle file on RuneLite's shared executor, reloading
+        // when it changes — or when a newer file becomes the auto-detect target
+        // (e.g. a fresh export landed in Downloads). No background worker of our
+        // own and no blocking calls.
         watcherFuture = executor.scheduleWithFixedDelay(() -> {
+            Path file = effectiveBundlePath();
+            if (file == null) return;
             FileTime now = lastModified(file);
-            if (now != null && !now.equals(watcherLastModified))
+            if (now == null) return;
+            if (!file.equals(watcherLoadedPath) || !now.equals(watcherLastModified))
             {
-                watcherLastModified = now;
                 clientThread.invoke(this::reloadBundle);
             }
         }, 1, 1, TimeUnit.SECONDS);

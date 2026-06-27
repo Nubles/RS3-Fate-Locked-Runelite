@@ -22,7 +22,7 @@ public interface FateLockedConfig extends Config
     @ConfigItem(
         keyName = "bundlePath",
         name = "Bundle file path",
-        description = "Absolute path to the .json file exported from the Fate Locked tracker",
+        description = "Absolute path to the .json exported from the Fate Locked tracker. Leave blank to auto-detect the newest fate-locked-bundle file in your Downloads folder.",
         section = bundleSection,
         position = 0
     )
@@ -32,11 +32,23 @@ public interface FateLockedConfig extends Config
     }
 
     @ConfigItem(
-        keyName = "autoReload",
-        name = "Auto-reload on change",
-        description = "Re-parse the bundle file whenever it changes on disk",
+        keyName = "autoDetectDownloads",
+        name = "Auto-detect from Downloads",
+        description = "When the path above is blank, automatically load the newest fate-locked-bundle-*.json from your Downloads folder",
         section = bundleSection,
         position = 1
+    )
+    default boolean autoDetectDownloads()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "autoReload",
+        name = "Auto-reload on change",
+        description = "Re-parse the bundle whenever it changes (or a newer one is exported)",
+        section = bundleSection,
+        position = 2
     )
     default boolean autoReload()
     {

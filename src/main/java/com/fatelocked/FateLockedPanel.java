@@ -19,6 +19,8 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.awt.Toolkit;
+import java.awt.datatransfer.DataFlavor;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -99,6 +101,18 @@ class FateLockedPanel extends PluginPanel
         col.add(section("LOAD BUNDLE"));
         col.add(Box.createVerticalStrut(4));
 
+        // Primary path: the web app's RL button puts the bundle on the clipboard,
+        // so a single click here imports it — no file, no pasting.
+        JButton clipboardBtn = new JButton("Import from clipboard");
+        clipboardBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        clipboardBtn.setToolTipText("Click RL in the web app, then click here");
+        clipboardBtn.addActionListener(e -> importFromClipboard());
+        col.add(clipboardBtn);
+        col.add(Box.createVerticalStrut(6));
+
+        JLabel pasteHint = section("…OR PASTE JSON");
+        col.add(pasteHint);
+
         pasteArea.setLineWrap(true);
         pasteArea.setBackground(ColorScheme.DARKER_GRAY_COLOR);
         pasteArea.setForeground(Color.LIGHT_GRAY);
@@ -132,6 +146,28 @@ class FateLockedPanel extends PluginPanel
     {
         this.onImport = onImport;
         this.onReload = onReload;
+    }
+
+    /** Read the system clipboard and import it as a bundle (local-only, no network). */
+    private void importFromClipboard()
+    {
+        try
+        {
+            Object data = Toolkit.getDefaultToolkit().getSystemClipboard()
+                .getData(DataFlavor.stringFlavor);
+            String txt = data == null ? "" : data.toString().trim();
+            if (txt.isEmpty())
+            {
+                flashStatus("clipboard empty", false);
+                return;
+            }
+            pasteArea.setText(txt);
+            onImport.accept(txt);
+        }
+        catch (Exception ex)
+        {
+            flashStatus("couldn't read clipboard", false);
+        }
     }
 
     /** Push fresh state into the panel. Safe to call from the client thread. */

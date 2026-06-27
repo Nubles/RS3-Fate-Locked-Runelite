@@ -44,12 +44,17 @@ touch content you haven't unlocked yet.
 
 ### Loading a bundle
 
-- **Clipboard → side panel.** The web app's **RL** button copies the bundle to
-  your clipboard (and downloads it). Paste it into the panel's box and click
-  *Import pasted JSON*. Fastest loop.
-- **File path.** Point **Bundle file path** in the plugin config at the
-  downloaded `fate-locked-bundle-YYYY-MM-DD.json`. The file is watched, so
-  re-exporting over it updates the plugin automatically.
+Click **RL** in the web app — it copies the bundle to your clipboard *and*
+downloads it — then get it into the plugin whichever way suits you:
+
+- **Import from clipboard** *(easiest).* Open the plugin side panel and click
+  **Import from clipboard**. That's it — no file, no pasting.
+- **Auto-detect from Downloads.** Leave **Bundle file path** blank; the plugin
+  loads the newest `fate-locked-bundle-*.json` from your Downloads folder and
+  keeps watching for newer exports.
+- **Explicit file path.** Point **Bundle file path** at a specific `.json`; it's
+  watched and hot-reloaded whenever it changes.
+- **Paste JSON.** Paste into the side-panel box and click *Import pasted JSON*.
 
 ## Configuration
 
