@@ -6,8 +6,9 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
+import net.runelite.api.Constants;
 import net.runelite.api.GameState;
-import net.runelite.api.MenuAction;
+import net.runelite.api.MenuEntry;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
 import net.runelite.api.Skill;
@@ -322,35 +323,34 @@ public class FateLockedPlugin extends Plugin
         FateLockedBundle b = bundle;
         if (b.getRegionChunks().isEmpty()) return;
 
-        WorldPoint target = menuTargetWorldPoint(event);
+        MenuEntry entry = event.getMenuEntry();
+        WorldPoint target = menuTargetWorldPoint(entry);
         if (target == null) return;
+        if (b.lockStateAt(CanonicalChunk.of(target)) != FateLockedBundle.LockState.LOCKED) return;
 
-        if (b.lockStateAt(CanonicalChunk.of(target)) == FateLockedBundle.LockState.LOCKED)
+        String t = entry.getTarget();
+        String base = t == null ? "" : t;
+        if (!base.contains("(LOCKED)"))
         {
-            String t = event.getTarget();
-            if (t != null && !t.contains("(LOCKED)"))
-            {
-                event.getMenuEntry().setTarget(t + " <col=ef4444>(LOCKED)</col>");
-            }
+            entry.setTarget(base + " <col=ef4444>(LOCKED)</col>");
         }
     }
 
-    /** Resolve the world tile a menu entry points at, where feasible. */
-    private WorldPoint menuTargetWorldPoint(MenuEntryAdded event)
+    /**
+     * Resolve the world tile a menu entry points at, where feasible — using the
+     * MenuEntry's typed accessors rather than decoding the raw type int (which
+     * carries a +2000 offset on deprioritized entries and led to both missed
+     * tags and false positives).
+     */
+    private WorldPoint menuTargetWorldPoint(MenuEntry entry)
     {
-        MenuAction action = MenuAction.of(event.getType());
-        switch (action)
+        // NPCs: use the resolved actor, independent of the (possibly offset)
+        // action type, so deprioritized NPC options are still tagged.
+        NPC npc = entry.getNpc();
+        if (npc != null) return npc.getWorldLocation();
+
+        switch (entry.getType())
         {
-            case NPC_FIRST_OPTION:
-            case NPC_SECOND_OPTION:
-            case NPC_THIRD_OPTION:
-            case NPC_FOURTH_OPTION:
-            case NPC_FIFTH_OPTION:
-            case EXAMINE_NPC:
-            {
-                NPC npc = event.getMenuEntry().getNpc();
-                return npc == null ? null : npc.getWorldLocation();
-            }
             case GAME_OBJECT_FIRST_OPTION:
             case GAME_OBJECT_SECOND_OPTION:
             case GAME_OBJECT_THIRD_OPTION:
@@ -365,9 +365,13 @@ public class FateLockedPlugin extends Plugin
             case EXAMINE_ITEM_GROUND:
             case WALK:
             {
-                int sceneX = event.getActionParam0();
-                int sceneY = event.getActionParam1();
-                if (sceneX < 0 || sceneY < 0) return null;
+                // For these, param0/param1 are scene coordinates. Validate the
+                // range so a non-tile entry with junk params can't resolve to a
+                // bogus (often "locked") far-off chunk.
+                int sceneX = entry.getParam0();
+                int sceneY = entry.getParam1();
+                if (sceneX < 0 || sceneX >= Constants.SCENE_SIZE
+                    || sceneY < 0 || sceneY >= Constants.SCENE_SIZE) return null;
                 return WorldPoint.fromScene(client, sceneX, sceneY, client.getPlane());
             }
             default:
