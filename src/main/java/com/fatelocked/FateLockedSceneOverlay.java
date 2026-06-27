@@ -1,6 +1,7 @@
 package com.fatelocked;
 
 import net.runelite.api.Client;
+import net.runelite.api.Constants;
 import net.runelite.api.Perspective;
 import net.runelite.api.Player;
 import net.runelite.api.Point;
@@ -41,7 +42,7 @@ public class FateLockedSceneOverlay extends Overlay
     @Override
     public Dimension render(Graphics2D graphics)
     {
-        if (!config.drawScene() && !config.highlightLockedBorders()) return null;
+        if (!config.drawScene() && !config.highlightLockedBorders() && !config.shadeNearbyLocked()) return null;
         Player local = client.getLocalPlayer();
         if (local == null) return null;
         WorldPoint wp = local.getWorldLocation();
@@ -50,6 +51,13 @@ public class FateLockedSceneOverlay extends Overlay
         FateLockedBundle bundle = plugin.getBundle();
         CanonicalChunk chunk = CanonicalChunk.of(wp);
         int plane = wp.getPlane();
+
+        // Light shading for surrounding locked chunks goes first, under the
+        // current-chunk tint and borders.
+        if (config.shadeNearbyLocked())
+        {
+            drawSurroundingLocked(graphics, chunk, plane, bundle);
+        }
 
         if (config.drawScene())
         {
@@ -96,6 +104,62 @@ public class FateLockedSceneOverlay extends Overlay
     private static boolean isLocked(FateLockedBundle bundle, int cx, int cy)
     {
         return bundle.lockStateAt(new CanonicalChunk(cx, cy)) == FateLockedBundle.LockState.LOCKED;
+    }
+
+    /**
+     * Lightly tint every locked chunk overlapping the loaded scene (except the
+     * one the player is standing in, which gets the full treatment elsewhere).
+     */
+    private void drawSurroundingLocked(Graphics2D g, CanonicalChunk current, int plane, FateLockedBundle bundle)
+    {
+        int baseX = client.getBaseX();
+        int baseY = client.getBaseY();
+        int cxMin = baseX >> 6, cxMax = (baseX + Constants.SCENE_SIZE - 1) >> 6;
+        int cyMin = baseY >> 6, cyMax = (baseY + Constants.SCENE_SIZE - 1) >> 6;
+
+        Color light = faint(config.lockedColor());
+        g.setColor(light);
+        for (int cx = cxMin; cx <= cxMax; cx++)
+        {
+            for (int cy = cyMin; cy <= cyMax; cy++)
+            {
+                if (cx == current.getCx() && cy == current.getCy()) continue;
+                CanonicalChunk c = new CanonicalChunk(cx, cy);
+                if (bundle.lockStateAt(c) != FateLockedBundle.LockState.LOCKED) continue;
+                Polygon p = chunkScenePolyClamped(c, plane);
+                if (p != null) g.fillPolygon(p);
+            }
+        }
+    }
+
+    /** Chunk outline polygon clipped to the loaded scene, so partly-visible chunks still draw. */
+    private Polygon chunkScenePolyClamped(CanonicalChunk chunk, int plane)
+    {
+        int minX = client.getBaseX(), minY = client.getBaseY();
+        int maxX = minX + Constants.SCENE_SIZE - 1, maxY = minY + Constants.SCENE_SIZE - 1;
+        int x0 = Math.max(chunk.getCx() << 6, minX);
+        int y0 = Math.max(chunk.getCy() << 6, minY);
+        int x1 = Math.min((chunk.getCx() << 6) + 63, maxX);
+        int y1 = Math.min((chunk.getCy() << 6) + 63, maxY);
+        if (x0 > x1 || y0 > y1) return null; // no overlap with the scene
+
+        int[][] cs = { { x0, y0 }, { x1, y0 }, { x1, y1 }, { x0, y1 } };
+        Polygon p = new Polygon();
+        for (int[] c : cs)
+        {
+            LocalPoint lp = LocalPoint.fromWorld(client, c[0], c[1]);
+            if (lp == null) return null;
+            Point cv = Perspective.localToCanvas(client, lp, plane);
+            if (cv == null) return null;
+            p.addPoint(cv.getX(), cv.getY());
+        }
+        return p;
+    }
+
+    /** A faint version of a color for subtle background shading. */
+    private static Color faint(Color c)
+    {
+        return new Color(c.getRed(), c.getGreen(), c.getBlue(), Math.max(20, Math.min(c.getAlpha(), 110) / 3));
     }
 
     private void drawEdge(Graphics2D g, int x0, int y0, int x1, int y1, int plane)

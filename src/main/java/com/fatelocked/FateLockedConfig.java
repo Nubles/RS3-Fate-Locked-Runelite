@@ -191,6 +191,17 @@ public interface FateLockedConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "shadeNearbyLocked",
+        name = "Shade nearby locked chunks",
+        description = "Lightly tint every locked chunk visible around you in the game view and minimap, not just the one you're standing in",
+        section = renderingSection
+    )
+    default boolean shadeNearbyLocked()
+    {
+        return true;
+    }
+
+    @ConfigItem(
         keyName = "worldMapTooltip",
         name = "World map hover tooltip",
         description = "Hover an authored chunk on the world map to see its area name and lock status",

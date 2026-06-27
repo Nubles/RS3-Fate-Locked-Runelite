@@ -1,6 +1,7 @@
 package com.fatelocked;
 
 import net.runelite.api.Client;
+import net.runelite.api.Constants;
 import net.runelite.api.Perspective;
 import net.runelite.api.Player;
 import net.runelite.api.Point;
@@ -30,9 +31,9 @@ import java.awt.geom.Ellipse2D;
 public class FateLockedMinimapOverlay extends Overlay
 {
     // Local-coordinate radius within which Perspective will project a point.
-    // A 64-tile chunk corner can sit ~90 tiles from the player, so 14000 local
-    // units (~109 tiles) comfortably covers every corner.
-    private static final int PROJECTION_DISTANCE = 14000;
+    // Generous enough to cover the corners of chunks one step out from the
+    // player's (for nearby-locked shading); the minimap clip discards overflow.
+    private static final int PROJECTION_DISTANCE = 30000;
     private static final BasicStroke STROKE = new BasicStroke(1.5f);
 
     // The minimap draw area widget differs between the fixed and resizable
@@ -77,7 +78,6 @@ public class FateLockedMinimapOverlay extends Overlay
         }
 
         Polygon poly = chunkMinimapPolygon(chunk);
-        if (poly == null) return null;
 
         // A whole 64-tile chunk projects to a polygon much larger than the
         // minimap circle, so clip to the minimap draw area before filling —
@@ -86,18 +86,51 @@ public class FateLockedMinimapOverlay extends Overlay
         Shape clip = minimapClip();
         if (clip != null) graphics.clip(clip);
 
-        graphics.setColor(color);
-        graphics.fillPolygon(poly);
-        graphics.setStroke(STROKE);
-        graphics.setColor(new Color(
-            Math.min(color.getRed() + 40, 255),
-            Math.min(color.getGreen() + 40, 255),
-            Math.min(color.getBlue() + 40, 255),
-            230));
-        graphics.drawPolygon(poly);
+        // Faint shading for surrounding locked chunks first, beneath the current.
+        if (config.shadeNearbyLocked())
+        {
+            drawSurroundingLocked(graphics, chunk, bundle);
+        }
+
+        if (poly != null)
+        {
+            graphics.setColor(color);
+            graphics.fillPolygon(poly);
+            graphics.setStroke(STROKE);
+            graphics.setColor(new Color(
+                Math.min(color.getRed() + 40, 255),
+                Math.min(color.getGreen() + 40, 255),
+                Math.min(color.getBlue() + 40, 255),
+                230));
+            graphics.drawPolygon(poly);
+        }
 
         graphics.setClip(oldClip);
         return null;
+    }
+
+    /** Lightly tint locked chunks overlapping the loaded scene around the player. */
+    private void drawSurroundingLocked(Graphics2D graphics, CanonicalChunk current, FateLockedBundle bundle)
+    {
+        int baseX = client.getBaseX();
+        int baseY = client.getBaseY();
+        int cxMin = baseX >> 6, cxMax = (baseX + Constants.SCENE_SIZE - 1) >> 6;
+        int cyMin = baseY >> 6, cyMax = (baseY + Constants.SCENE_SIZE - 1) >> 6;
+
+        Color c = config.lockedColor();
+        graphics.setColor(new Color(c.getRed(), c.getGreen(), c.getBlue(),
+            Math.max(20, Math.min(c.getAlpha(), 110) / 3)));
+        for (int cx = cxMin; cx <= cxMax; cx++)
+        {
+            for (int cy = cyMin; cy <= cyMax; cy++)
+            {
+                if (cx == current.getCx() && cy == current.getCy()) continue;
+                CanonicalChunk ch = new CanonicalChunk(cx, cy);
+                if (bundle.lockStateAt(ch) != FateLockedBundle.LockState.LOCKED) continue;
+                Polygon p = chunkMinimapPolygon(ch);
+                if (p != null) graphics.fillPolygon(p);
+            }
+        }
     }
 
     /** Elliptical clip matching the currently-visible minimap draw area, or null. */
