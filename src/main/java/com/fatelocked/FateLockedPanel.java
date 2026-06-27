@@ -51,6 +51,7 @@ class FateLockedPanel extends PluginPanel
     private final JLabel chunkVal = value();
     private final JLabel regionVal = value();
     private final JLabel statusVal = value();
+    private final JTextArea hereList = listArea();
 
     private final JLabel allowedHead = section("ALLOWED (0)");
     private final JLabel forbiddenHead = section("FORBIDDEN (0)");
@@ -85,6 +86,9 @@ class FateLockedPanel extends PluginPanel
         col.add(section("CURRENT LOCATION"));
         col.add(stats(new String[]{ "Chunk", "Area", "Status" },
             new JLabel[]{ chunkVal, regionVal, statusVal }));
+        col.add(Box.createVerticalStrut(4));
+        col.add(section("IN THIS CHUNK"));
+        col.add(wrap(hereList));
         col.add(Box.createVerticalStrut(12));
 
         col.add(allowedHead);
@@ -206,6 +210,8 @@ class FateLockedPanel extends PluginPanel
         FateLockedBundle.RunState st = bundle.getState();
         List<String> goals = st == null || st.getPinnedGoals() == null
             ? Collections.<String>emptyList() : st.getPinnedGoals();
+        List<String> here = current == null
+            ? Collections.<String>emptyList() : bundle.contentAt(current);
 
         SwingUtilities.invokeLater(() -> {
             profileVal.setText(orDash(bundle.getProfileName()));
@@ -257,6 +263,9 @@ class FateLockedPanel extends PluginPanel
             forbiddenList.setForeground(RED);
             unknownNote.setText(unnamed + " map chunks in unnamed terrain");
             unknownNote.setForeground(Color.GRAY);
+
+            hereList.setText(here.isEmpty() ? "—" : String.join(", ", here));
+            hereList.setForeground(Color.LIGHT_GRAY);
         });
     }
 

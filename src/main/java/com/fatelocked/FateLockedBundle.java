@@ -54,6 +54,8 @@ public class FateLockedBundle
     private final Map<String, List<String>> regionGroups;
     /** Sub-area names the player has unlocked. */
     private final Set<String> unlockedRegions;
+    /** Slim "what's here" per chunk: "cx,cy" → content names. v3+, optional. */
+    private final Map<String, List<String>> chunkContent;
     /** Live run state for the HUD (null on v1 bundles). */
     private final RunState state;
 
@@ -77,6 +79,8 @@ public class FateLockedBundle
             ? Collections.<String, List<String>>emptyMap() : raw.regionGroups;
         this.unlockedRegions = raw == null || raw.unlockedRegions == null
             ? Collections.<String>emptySet() : new HashSet<>(raw.unlockedRegions);
+        this.chunkContent = raw == null || raw.chunkContent == null
+            ? Collections.<String, List<String>>emptyMap() : raw.chunkContent;
         this.state = raw == null ? null : raw.state;
         this.chunkToRegion = chunkToRegion;
         this.chunkToSubArea = chunkToSubArea;
@@ -160,6 +164,13 @@ public class FateLockedBundle
         return chunkToSubArea.get(chunk);
     }
 
+    /** Notable content (monster names) in this chunk; empty when none/unknown. */
+    public List<String> contentAt(CanonicalChunk chunk)
+    {
+        List<String> v = chunkContent.get(chunk.getCx() + "," + chunk.getCy());
+        return v == null ? Collections.<String>emptyList() : v;
+    }
+
     /** "Falador · Asgarnia", "Asgarnia", or null when unauthored. */
     public String labelAt(CanonicalChunk chunk)
     {
@@ -227,6 +238,7 @@ public class FateLockedBundle
         Map<String, List<RawChunk>> subAreaChunks;
         Map<String, List<String>> regionGroups;
         List<String> unlockedRegions;
+        Map<String, List<String>> chunkContent;
         RunState state;
     }
 
