@@ -39,6 +39,9 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.ui.overlay.worldmap.WorldMapPoint;
+import net.runelite.client.ui.overlay.worldmap.WorldMapPointManager;
+import net.runelite.api.Point;
 
 import javax.inject.Inject;
 import java.awt.Color;
@@ -88,6 +91,7 @@ public class FateLockedPlugin extends Plugin
     @Inject private ScheduledExecutorService executor;
     @Inject private ItemManager itemManager;
     @Inject private Notifier notifier;
+    @Inject private WorldMapPointManager worldMapPointManager;
 
     @Getter private volatile FateLockedBundle bundle = FateLockedBundle.empty();
 
@@ -123,6 +127,10 @@ public class FateLockedPlugin extends Plugin
         SLOT_NAMES.put(EquipmentInventorySlot.BOOTS, "Boots");
         SLOT_NAMES.put(EquipmentInventorySlot.RING, "Ring");
     }
+
+    /** Active world-map markers for locked areas (so we can remove them on refresh). */
+    private final List<WorldMapPoint> mapMarkers = new ArrayList<>();
+    private BufferedImage lockedPinImage;
 
     /** Worn-gear slots currently above your unlocked tier, for the HUD (null = none). */
     @Getter private volatile String overTierSummary;
@@ -184,6 +192,8 @@ public class FateLockedPlugin extends Plugin
             navButton = null;
         }
         stopWatcher();
+        for (WorldMapPoint p : mapMarkers) worldMapPointManager.remove(p);
+        mapMarkers.clear();
         bundle = FateLockedBundle.empty();
         lastChunk = null;
     }
@@ -206,6 +216,10 @@ public class FateLockedPlugin extends Plugin
         else if ("warnLockedSlayer".equals(key))
         {
             recomputeSlayer();
+        }
+        else if ("worldMapMarkers".equals(key))
+        {
+            refreshWorldMapMarkers();
         }
     }
 
@@ -700,10 +714,64 @@ public class FateLockedPlugin extends Plugin
         boolean unlocked = current != null
             && bundle.lockStateAt(current) == FateLockedBundle.LockState.UNLOCKED;
         panel.update(bundle, current, label, unlocked);
-        // A fresh bundle may change unlocked tiers / areas — re-check worn gear
-        // and the current slayer task.
+        // A fresh bundle may change unlocked tiers / areas — re-check worn gear,
+        // the current slayer task, and the world-map markers.
         recomputeOverTierGear();
         recomputeSlayer();
+        refreshWorldMapMarkers();
+    }
+
+    /** Place a click-to-jump marker on each authored area you haven't unlocked yet. */
+    private void refreshWorldMapMarkers()
+    {
+        for (WorldMapPoint p : mapMarkers) worldMapPointManager.remove(p);
+        mapMarkers.clear();
+        if (!config.worldMapMarkers()) return;
+
+        FateLockedBundle b = bundle;
+        for (Map.Entry<String, Set<CanonicalChunk>> e : b.getSubAreaChunks().entrySet())
+        {
+            String area = e.getKey();
+            if (b.isUnlocked(area)) continue; // only pin what's still locked
+
+            Set<CanonicalChunk> chunks = e.getValue();
+            if (chunks.isEmpty()) continue;
+            long sx = 0, sy = 0;
+            for (CanonicalChunk c : chunks) { sx += c.getCx(); sy += c.getCy(); }
+            int cx = (int) (sx / chunks.size());
+            int cy = (int) (sy / chunks.size());
+            WorldPoint wp = new WorldPoint((cx << 6) + 32, (cy << 6) + 32, 0);
+
+            WorldMapPoint point = new WorldMapPoint(wp, lockedPinImage());
+            point.setName(area);
+            point.setTooltip(area + " — LOCKED");
+            point.setTarget(wp);
+            point.setJumpOnClick(true);
+            point.setSnapToEdge(false);
+            point.setImagePoint(new Point(lockedPinImage().getWidth() / 2, lockedPinImage().getHeight() / 2));
+            worldMapPointManager.add(point);
+            mapMarkers.add(point);
+        }
+    }
+
+    /** Small red lock-style pin, generated once. */
+    private BufferedImage lockedPinImage()
+    {
+        if (lockedPinImage != null) return lockedPinImage;
+        int s = 15;
+        BufferedImage img = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setColor(new Color(239, 68, 68, 235));
+        g.fillOval(1, 1, s - 2, s - 2);
+        g.setColor(new Color(20, 20, 20, 200));
+        g.drawOval(1, 1, s - 2, s - 2);
+        g.setColor(Color.WHITE);
+        g.fillRect(s / 2 - 2, s / 2, 5, 4);          // lock body
+        g.drawArc(s / 2 - 2, s / 2 - 3, 4, 5, 0, 180); // shackle
+        g.dispose();
+        lockedPinImage = img;
+        return img;
     }
 
     private static BufferedImage createIcon()

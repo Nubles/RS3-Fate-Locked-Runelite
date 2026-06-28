@@ -246,6 +246,17 @@ public interface FateLockedConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "worldMapMarkers",
+        name = "Pin locked areas on world map",
+        description = "Place a marker on each authored area you haven't unlocked; click a marker to jump the world map there. Off by default to avoid clutter.",
+        section = renderingSection
+    )
+    default boolean worldMapMarkers()
+    {
+        return false;
+    }
+
+    @ConfigItem(
         keyName = "worldMapTooltip",
         name = "World map hover tooltip",
         description = "Hover an authored chunk on the world map to see its area name and lock status",

@@ -16,7 +16,8 @@ touch content you haven't unlocked yet.
   always-free Misthalin.
 - **World map overlay.** Every authored chunk tinted green (unlocked) or red
   (locked), per chunk, on the full world map — hover any authored chunk to see
-  its area name and lock status.
+  its area name and lock status. Optional click-to-jump markers pin every area
+  you haven't unlocked yet.
 - **Scene + minimap overlays.** The 64×64 chunk you're in is outlined in the
   game view and tinted on the minimap with the same color coding.
 - **Locked-border highlight.** The edges of your current chunk that border a
