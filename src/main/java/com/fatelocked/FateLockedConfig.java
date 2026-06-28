@@ -4,6 +4,7 @@ import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.ConfigSection;
+import net.runelite.client.config.Keybind;
 
 import java.awt.Color;
 
@@ -53,6 +54,18 @@ public interface FateLockedConfig extends Config
     default boolean autoReload()
     {
         return true;
+    }
+
+    @ConfigItem(
+        keyName = "reimportHotkey",
+        name = "Re-import hotkey",
+        description = "Hotkey to re-import the bundle from your clipboard — press it after clicking RuneLite in the web app to re-sync without opening the panel",
+        section = bundleSection,
+        position = 3
+    )
+    default Keybind reimportHotkey()
+    {
+        return Keybind.NOT_SET;
     }
 
     @ConfigSection(

@@ -35,6 +35,8 @@ import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.input.KeyManager;
+import net.runelite.client.util.HotkeyListener;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -51,6 +53,8 @@ import net.runelite.api.Point;
 import javax.inject.Inject;
 import java.awt.Color;
 import java.awt.Graphics2D;
+import java.awt.Toolkit;
+import java.awt.datatransfer.DataFlavor;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -100,6 +104,17 @@ public class FateLockedPlugin extends Plugin
     @Inject private Notifier notifier;
     @Inject private WorldMapPointManager worldMapPointManager;
     @Inject private InfoBoxManager infoBoxManager;
+    @Inject private KeyManager keyManager;
+
+    /** Configurable hotkey: re-import the bundle from the clipboard. */
+    private final HotkeyListener reimportHotkey = new HotkeyListener(() -> config.reimportHotkey())
+    {
+        @Override
+        public void hotkeyPressed()
+        {
+            reimportFromClipboard();
+        }
+    };
 
     @Getter private volatile FateLockedBundle bundle = FateLockedBundle.empty();
 
@@ -203,6 +218,7 @@ public class FateLockedPlugin extends Plugin
         reloadBundle();
         startWatcher();
         refreshInfoBoxes();
+        keyManager.registerKeyListener(reimportHotkey);
     }
 
     @Override
@@ -219,6 +235,7 @@ public class FateLockedPlugin extends Plugin
             navButton = null;
         }
         stopWatcher();
+        keyManager.unregisterKeyListener(reimportHotkey);
         for (WorldMapPoint p : mapMarkers) worldMapPointManager.remove(p);
         mapMarkers.clear();
         infoBoxManager.removeIf(b -> b instanceof FateLockedInfoBox);
@@ -728,6 +745,29 @@ public class FateLockedPlugin extends Plugin
             if (newest == null || f.lastModified() > newest.lastModified()) newest = f;
         }
         return newest == null ? null : newest.toPath();
+    }
+
+    /** Hotkey action: read the clipboard and import it as a bundle (on the client thread). */
+    private void reimportFromClipboard()
+    {
+        String text;
+        try
+        {
+            Object data = Toolkit.getDefaultToolkit().getSystemClipboard().getData(DataFlavor.stringFlavor);
+            text = data == null ? "" : data.toString().trim();
+        }
+        catch (Exception ex)
+        {
+            panel.flashStatus("couldn't read clipboard", false);
+            return;
+        }
+        if (text.isEmpty())
+        {
+            panel.flashStatus("clipboard empty", false);
+            return;
+        }
+        final String t = text;
+        clientThread.invoke(() -> applyPastedBundle(t));
     }
 
     /** Load a bundle from JSON pasted into the side panel. */
