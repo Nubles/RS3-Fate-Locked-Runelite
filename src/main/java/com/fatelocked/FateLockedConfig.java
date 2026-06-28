@@ -173,6 +173,17 @@ public interface FateLockedConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "showInfoBoxes",
+        name = "Show key/fate/progress infoboxes",
+        description = "Add dockable infoboxes for your keys, fate points and unlock progress (native RuneLite infobox row)",
+        section = warningsSection
+    )
+    default boolean showInfoBoxes()
+    {
+        return false;
+    }
+
+    @ConfigItem(
         keyName = "rollNudges",
         name = "Roll reminders",
         description = "Chat reminder on level-up, quest, diary and combat-achievement completion that it may be worth a roll in the tracker",

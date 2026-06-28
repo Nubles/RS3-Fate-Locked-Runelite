@@ -39,6 +39,9 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.ui.overlay.infobox.InfoBox;
+import net.runelite.client.ui.overlay.infobox.InfoBoxManager;
+import net.runelite.client.util.Text;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPoint;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPointManager;
 import net.runelite.api.Point;
@@ -61,6 +64,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.concurrent.ScheduledExecutorService;
@@ -92,6 +96,7 @@ public class FateLockedPlugin extends Plugin
     @Inject private ItemManager itemManager;
     @Inject private Notifier notifier;
     @Inject private WorldMapPointManager worldMapPointManager;
+    @Inject private InfoBoxManager infoBoxManager;
 
     @Getter private volatile FateLockedBundle bundle = FateLockedBundle.empty();
 
@@ -176,6 +181,7 @@ public class FateLockedPlugin extends Plugin
 
         reloadBundle();
         startWatcher();
+        refreshInfoBoxes();
     }
 
     @Override
@@ -194,6 +200,7 @@ public class FateLockedPlugin extends Plugin
         stopWatcher();
         for (WorldMapPoint p : mapMarkers) worldMapPointManager.remove(p);
         mapMarkers.clear();
+        infoBoxManager.removeIf(b -> b instanceof FateLockedInfoBox);
         bundle = FateLockedBundle.empty();
         lastChunk = null;
     }
@@ -220,6 +227,10 @@ public class FateLockedPlugin extends Plugin
         else if ("worldMapMarkers".equals(key))
         {
             refreshWorldMapMarkers();
+        }
+        else if ("showInfoBoxes".equals(key))
+        {
+            refreshInfoBoxes();
         }
     }
 
@@ -426,10 +437,11 @@ public class FateLockedPlugin extends Plugin
         overTierSummary = over.isEmpty() ? null : String.join(", ", over);
     }
 
-    /** Normalise an OSRS name for comparison (RuneLite uses non-breaking spaces). */
+    /** Normalise an OSRS name for comparison via RuneLite's Text.sanitize (handles
+     *  non-breaking spaces, tags and stray whitespace), then case-fold. */
     static String normName(String s)
     {
-        return s == null ? "" : s.replace((char)0x00A0, ' ').trim().toLowerCase();
+        return s == null ? "" : Text.sanitize(s).toLowerCase(java.util.Locale.ROOT);
     }
 
     /**
@@ -771,6 +783,55 @@ public class FateLockedPlugin extends Plugin
         g.drawArc(s / 2 - 2, s / 2 - 3, 4, 5, 0, 180); // shackle
         g.dispose();
         lockedPinImage = img;
+        return img;
+    }
+
+    // ── Infoboxes (keys / fate / unlock progress) ─────────────────────────────
+
+    private void refreshInfoBoxes()
+    {
+        infoBoxManager.removeIf(b -> b instanceof FateLockedInfoBox);
+        if (!config.showInfoBoxes()) return;
+
+        infoBoxManager.addInfoBox(new FateLockedInfoBox(discIcon(new Color(245, 158, 11)), this,
+            new Color(245, 158, 11),
+            () -> { FateLockedBundle.RunState s = bundle.getState(); return s == null ? "—" : String.valueOf(s.getKeys()); },
+            () -> {
+                FateLockedBundle.RunState s = bundle.getState();
+                return s == null ? "Fate Locked keys"
+                    : "Keys: " + s.getKeys() + " · Omni " + s.getSpecialKeys() + " · Chaos " + s.getChaosKeys();
+            }));
+
+        infoBoxManager.addInfoBox(new FateLockedInfoBox(discIcon(new Color(168, 85, 247)), this,
+            new Color(196, 145, 255),
+            () -> { FateLockedBundle.RunState s = bundle.getState(); return s == null ? "—" : String.valueOf(s.getFatePoints()); },
+            () -> "Fate points"));
+
+        infoBoxManager.addInfoBox(new FateLockedInfoBox(discIcon(new Color(52, 211, 153)), this,
+            new Color(52, 211, 153),
+            () -> {
+                FateLockedBundle b = bundle;
+                if (b.getTotalChunks() <= 0) return "—";
+                return Math.round(100.0 * b.getUnlockedChunks() / b.getTotalChunks()) + "%";
+            },
+            () -> {
+                FateLockedBundle b = bundle;
+                return "Unlock progress: " + b.getUnlockedAreas() + "/" + b.getTotalAreas()
+                    + " areas · " + b.getUnlockedChunks() + "/" + b.getTotalChunks() + " chunks";
+            }));
+    }
+
+    /** A small filled-disc infobox icon in the given colour. */
+    private static BufferedImage discIcon(Color c)
+    {
+        BufferedImage img = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = img.createGraphics();
+        g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g.setColor(c);
+        g.fillOval(1, 1, 14, 14);
+        g.setColor(new Color(0, 0, 0, 140));
+        g.drawOval(1, 1, 14, 14);
+        g.dispose();
         return img;
     }
 
