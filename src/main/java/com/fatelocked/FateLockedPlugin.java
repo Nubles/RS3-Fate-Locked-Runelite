@@ -24,6 +24,7 @@ import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.WidgetLoaded;
+import net.runelite.client.Notifier;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatColorType;
@@ -86,6 +87,7 @@ public class FateLockedPlugin extends Plugin
     @Inject private Gson gson;
     @Inject private ScheduledExecutorService executor;
     @Inject private ItemManager itemManager;
+    @Inject private Notifier notifier;
 
     @Getter private volatile FateLockedBundle bundle = FateLockedBundle.empty();
 
@@ -300,6 +302,7 @@ public class FateLockedPlugin extends Plugin
                     .type(ChatMessageType.GAMEMESSAGE)
                     .runeLiteFormattedMessage(msg.build())
                     .build());
+                notifyIfEnabled("Slayer task (" + slayerTask + ") is in a locked area");
             }
         }
         else
@@ -323,6 +326,12 @@ public class FateLockedPlugin extends Plugin
     {
         String n = skill.getName();
         return n.isEmpty() ? n : Character.toUpperCase(n.charAt(0)) + n.substring(1).toLowerCase();
+    }
+
+    /** Fire a RuneLite notification if the user enabled it (respects their global settings). */
+    private void notifyIfEnabled(String text)
+    {
+        if (config.useNotifier()) notifier.notify(text);
     }
 
     /** Queue a one-line informational chat nudge (client-side only). */
@@ -397,6 +406,7 @@ public class FateLockedPlugin extends Plugin
                     .type(ChatMessageType.GAMEMESSAGE)
                     .runeLiteFormattedMessage(msg.build())
                     .build());
+                notifyIfEnabled(name + " is above your unlocked " + e.getValue() + " tier");
             }
         }
         overTierSummary = over.isEmpty() ? null : String.join(", ", over);
@@ -439,6 +449,7 @@ public class FateLockedPlugin extends Plugin
             .runeLiteFormattedMessage(msg.build())
             .build());
         client.playSoundEffect(2277);
+        notifyIfEnabled("You're logged in as " + current + ", not the bound account " + bound);
     }
 
     @Subscribe
@@ -599,6 +610,7 @@ public class FateLockedPlugin extends Plugin
         if (!unlocked && region != null && config.warnOnLocked())
         {
             client.playSoundEffect(2277); // death squelch — good "you done messed up" cue
+            notifyIfEnabled("Entered LOCKED chunk: " + region);
         }
     }
 

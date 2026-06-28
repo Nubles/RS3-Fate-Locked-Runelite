@@ -140,6 +140,17 @@ public interface FateLockedConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "useNotifier",
+        name = "Send RuneLite notifications",
+        description = "Also fire a RuneLite notification (tray / sound, per your global settings) for locked-chunk entry, locked slayer tasks, over-tier gear and wrong-account logins",
+        section = warningsSection
+    )
+    default boolean useNotifier()
+    {
+        return false;
+    }
+
+    @ConfigItem(
         keyName = "warnLockedSlayer",
         name = "Warn on locked slayer task",
         description = "Chat + HUD warning when your assigned slayer monster only lives in chunks you haven't unlocked",

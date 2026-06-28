@@ -58,6 +58,8 @@ public class FateLockedBundle
     private final Set<String> unlockedRegions;
     /** Item-id (as string) → equipment tier, for the over-tier gear warning. v3+, optional. */
     private final Map<String, Integer> itemTiers;
+    /** Normalised slayer task name → chunks its monster appears in (complete coverage). v3+, optional. */
+    private final Map<String, Set<CanonicalChunk>> slayerChunks;
     /** Slim "what's here" per chunk: "cx,cy" → category ("mon"/"shop"/"farm"/"poi") → names. v3+, optional. */
     private final Map<String, Map<String, List<String>>> chunkContent;
     /** Category key → display label, in render order. */
@@ -99,6 +101,21 @@ public class FateLockedBundle
             ? Collections.<String, Map<String, List<String>>>emptyMap() : raw.chunkContent;
         this.itemTiers = raw == null || raw.itemTiers == null
             ? Collections.<String, Integer>emptyMap() : raw.itemTiers;
+
+        Map<String, Set<CanonicalChunk>> slayer = new HashMap<>();
+        if (raw != null && raw.slayerChunks != null)
+        {
+            for (Map.Entry<String, List<RawChunk>> e : raw.slayerChunks.entrySet())
+            {
+                Set<CanonicalChunk> set = new HashSet<>();
+                if (e.getValue() != null)
+                {
+                    for (RawChunk rc : e.getValue()) set.add(new CanonicalChunk(rc.cx, rc.cy));
+                }
+                slayer.put(e.getKey(), set);
+            }
+        }
+        this.slayerChunks = slayer;
         this.state = raw == null ? null : raw.state;
         this.chunkToRegion = chunkToRegion;
         this.chunkToSubArea = chunkToSubArea;
@@ -267,8 +284,15 @@ public class FateLockedBundle
     public Reach monsterReach(String monsterName)
     {
         if (monsterName == null || monsterName.trim().isEmpty()) return Reach.UNKNOWN;
-        if (monsterIndex == null) buildMonsterIndex();
-        Set<CanonicalChunk> chunks = monsterIndex.get(normMonster(monsterName));
+        String key = normMonster(monsterName);
+        // Prefer the complete slayer index (uncapped); fall back to the slim
+        // per-chunk monster summary (capped) for anything it doesn't cover.
+        Set<CanonicalChunk> chunks = slayerChunks.get(key);
+        if (chunks == null || chunks.isEmpty())
+        {
+            if (monsterIndex == null) buildMonsterIndex();
+            chunks = monsterIndex.get(key);
+        }
         if (chunks == null || chunks.isEmpty()) return Reach.UNKNOWN;
         for (CanonicalChunk c : chunks)
         {
@@ -334,6 +358,7 @@ public class FateLockedBundle
         List<String> unlockedRegions;
         Map<String, Map<String, List<String>>> chunkContent;
         Map<String, Integer> itemTiers;
+        Map<String, List<RawChunk>> slayerChunks;
         RunState state;
     }
 
