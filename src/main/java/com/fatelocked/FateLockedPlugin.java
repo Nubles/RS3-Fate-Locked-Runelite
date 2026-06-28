@@ -151,6 +151,8 @@ public class FateLockedPlugin extends Plugin
     private final Map<Integer, Integer> diaryState = new HashMap<>();
     /** Widget group shown when a quest is completed (the reward scroll). */
     private static final int QUEST_COMPLETED_GROUP_ID = 153;
+    /** Crystal key — a gold-key item icon for the Keys infobox. */
+    private static final int KEYS_ICON_ITEM = 989;
 
     /** RuneLite equipment slot → the web app's slot name (for tier lookup). */
     private static final Map<EquipmentInventorySlot, String> SLOT_NAMES = new LinkedHashMap<>();
@@ -868,7 +870,7 @@ public class FateLockedPlugin extends Plugin
         infoBoxManager.removeIf(b -> b instanceof FateLockedInfoBox);
         if (!config.showInfoBoxes()) return;
 
-        infoBoxManager.addInfoBox(new FateLockedInfoBox(discIcon(new Color(245, 158, 11)), this,
+        infoBoxManager.addInfoBox(new FateLockedInfoBox(itemManager.getImage(KEYS_ICON_ITEM), this,
             new Color(245, 158, 11),
             () -> { FateLockedBundle.RunState s = bundle.getState(); return s == null ? "—" : String.valueOf(s.getKeys()); },
             () -> {
