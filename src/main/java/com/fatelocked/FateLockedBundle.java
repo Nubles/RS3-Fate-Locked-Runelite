@@ -55,6 +55,8 @@ public class FateLockedBundle
     private final Map<String, List<String>> regionGroups;
     /** Sub-area names the player has unlocked. */
     private final Set<String> unlockedRegions;
+    /** Item-id (as string) → equipment tier, for the over-tier gear warning. v3+, optional. */
+    private final Map<String, Integer> itemTiers;
     /** Slim "what's here" per chunk: "cx,cy" → category ("mon"/"shop"/"farm"/"poi") → names. v3+, optional. */
     private final Map<String, Map<String, List<String>>> chunkContent;
     /** Category key → display label, in render order. */
@@ -86,6 +88,8 @@ public class FateLockedBundle
             ? Collections.<String>emptySet() : new HashSet<>(raw.unlockedRegions);
         this.chunkContent = raw == null || raw.chunkContent == null
             ? Collections.<String, Map<String, List<String>>>emptyMap() : raw.chunkContent;
+        this.itemTiers = raw == null || raw.itemTiers == null
+            ? Collections.<String, Integer>emptyMap() : raw.itemTiers;
         this.state = raw == null ? null : raw.state;
         this.chunkToRegion = chunkToRegion;
         this.chunkToSubArea = chunkToSubArea;
@@ -241,6 +245,8 @@ public class FateLockedBundle
         List<String> pinnedGoals;
         /** OSRS account the run is bound to (v3). null/empty on older bundles. */
         String linkedAccount;
+        /** Per-slot unlocked equipment tier (e.g. {"Head":2}). v3+, optional. */
+        Map<String, Integer> equipment;
     }
 
     private static final class RawBundle
@@ -254,6 +260,7 @@ public class FateLockedBundle
         Map<String, List<String>> regionGroups;
         List<String> unlockedRegions;
         Map<String, Map<String, List<String>>> chunkContent;
+        Map<String, Integer> itemTiers;
         RunState state;
     }
 

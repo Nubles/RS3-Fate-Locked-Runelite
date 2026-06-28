@@ -23,6 +23,8 @@ touch content you haven't unlocked yet.
   locked chunk are traced in red, so you see exactly which way not to go.
 - **Roll reminders.** A chat nudge on level-up, quest, achievement-diary and
   combat-achievement completion that it may be worth a roll in the tracker.
+- **Over-tier gear warning.** Warns (chat + HUD) when you're wearing an item
+  above your unlocked equipment tier for that slot.
 - **Locked right-click tags.** Menu entries for NPCs, objects, ground items and
   walks that target a locked chunk get a red **(LOCKED)** tag appended — the
   warning arrives *before* you click, where feasible.

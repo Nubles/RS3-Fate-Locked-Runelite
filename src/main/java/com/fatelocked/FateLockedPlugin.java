@@ -7,7 +7,11 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
+import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.GameState;
+import net.runelite.api.InventoryID;
+import net.runelite.api.Item;
+import net.runelite.api.ItemContainer;
 import net.runelite.api.MenuEntry;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
@@ -16,9 +20,11 @@ import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.WidgetLoaded;
+import net.runelite.client.game.ItemManager;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.chat.ChatColorType;
 import net.runelite.client.chat.ChatMessageBuilder;
@@ -44,8 +50,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.FileTime;
+import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -72,6 +83,7 @@ public class FateLockedPlugin extends Plugin
     @Inject private FateLockedPanel panel;
     @Inject private Gson gson;
     @Inject private ScheduledExecutorService executor;
+    @Inject private ItemManager itemManager;
 
     @Getter private volatile FateLockedBundle bundle = FateLockedBundle.empty();
 
@@ -90,6 +102,28 @@ public class FateLockedPlugin extends Plugin
     private final Map<Skill, Integer> lastLevels = new EnumMap<>(Skill.class);
     /** Widget group shown when a quest is completed (the reward scroll). */
     private static final int QUEST_COMPLETED_GROUP_ID = 153;
+
+    /** RuneLite equipment slot → the web app's slot name (for tier lookup). */
+    private static final Map<EquipmentInventorySlot, String> SLOT_NAMES = new LinkedHashMap<>();
+    static
+    {
+        SLOT_NAMES.put(EquipmentInventorySlot.HEAD, "Head");
+        SLOT_NAMES.put(EquipmentInventorySlot.CAPE, "Cape");
+        SLOT_NAMES.put(EquipmentInventorySlot.AMULET, "Neck");
+        SLOT_NAMES.put(EquipmentInventorySlot.AMMO, "Ammo");
+        SLOT_NAMES.put(EquipmentInventorySlot.WEAPON, "Weapon");
+        SLOT_NAMES.put(EquipmentInventorySlot.BODY, "Body");
+        SLOT_NAMES.put(EquipmentInventorySlot.SHIELD, "Shield");
+        SLOT_NAMES.put(EquipmentInventorySlot.LEGS, "Legs");
+        SLOT_NAMES.put(EquipmentInventorySlot.GLOVES, "Gloves");
+        SLOT_NAMES.put(EquipmentInventorySlot.BOOTS, "Boots");
+        SLOT_NAMES.put(EquipmentInventorySlot.RING, "Ring");
+    }
+
+    /** Worn-gear slots currently above your unlocked tier, for the HUD (null = none). */
+    @Getter private volatile String overTierSummary;
+    /** Item ids already warned about this session, to avoid chat spam. */
+    private final Set<Integer> warnedOverTier = new HashSet<>();
     /** Last account name we warned about, so we nag at most once per character. */
     private String lastAccountWarned;
 
@@ -151,6 +185,10 @@ public class FateLockedPlugin extends Plugin
             stopWatcher();
             startWatcher();
         }
+        else if ("warnOverTierGear".equals(key))
+        {
+            recomputeOverTierGear();
+        }
     }
 
     @Subscribe
@@ -163,6 +201,8 @@ public class FateLockedPlugin extends Plugin
             // The client fires StatChanged for every skill at login; clearing
             // here lets those re-establish the baseline without firing nudges.
             lastLevels.clear();
+            warnedOverTier.clear(); // re-warn over-tier gear once per session
+
         }
         else if (ev.getGameState() == GameState.LOGIN_SCREEN)
         {
@@ -233,6 +273,71 @@ public class FateLockedPlugin extends Plugin
             .type(ChatMessageType.GAMEMESSAGE)
             .runeLiteFormattedMessage(msg.build())
             .build());
+    }
+
+    // ── Over-tier gear warning ────────────────────────────────────────────────
+    // Warn (chat once + HUD line) when a worn item's tier exceeds the unlocked
+    // tier for its slot. The plugin can't block equipping (server-authoritative),
+    // only flag it — same as the locked-chunk warnings.
+
+    @Subscribe
+    public void onItemContainerChanged(ItemContainerChanged ev)
+    {
+        if (ev.getContainerId() == InventoryID.EQUIPMENT.getId())
+        {
+            recomputeOverTierGear();
+        }
+    }
+
+    private void recomputeOverTierGear()
+    {
+        if (!config.warnOverTierGear())
+        {
+            overTierSummary = null;
+            return;
+        }
+        FateLockedBundle b = bundle;
+        Map<String, Integer> tiers = b.getItemTiers();
+        FateLockedBundle.RunState st = b.getState();
+        Map<String, Integer> equip = st == null ? null : st.getEquipment();
+        if (tiers.isEmpty() || equip == null)
+        {
+            overTierSummary = null; // bundle predates the tier data — feature dormant
+            return;
+        }
+
+        ItemContainer eq = client.getItemContainer(InventoryID.EQUIPMENT);
+        if (eq == null)
+        {
+            overTierSummary = null;
+            return;
+        }
+
+        List<String> over = new ArrayList<>();
+        for (Map.Entry<EquipmentInventorySlot, String> e : SLOT_NAMES.entrySet())
+        {
+            Item item = eq.getItem(e.getKey().getSlotIdx());
+            if (item == null || item.getId() <= 0) continue;
+            Integer tier = tiers.get(String.valueOf(item.getId()));
+            if (tier == null) continue; // unknown item — don't flag
+            int unlocked = equip.getOrDefault(e.getValue(), 0);
+            if (tier <= unlocked) continue;
+
+            over.add(e.getValue());
+            if (warnedOverTier.add(item.getId()))
+            {
+                String name = itemManager.getItemComposition(item.getId()).getName();
+                ChatMessageBuilder msg = new ChatMessageBuilder()
+                    .append(ChatColorType.HIGHLIGHT).append("[Fate Locked] ")
+                    .append(ChatColorType.NORMAL).append(name)
+                    .append(" is T" + tier + " but your " + e.getValue() + " is only unlocked to T" + unlocked + ".");
+                chatMessageManager.queue(QueuedMessage.builder()
+                    .type(ChatMessageType.GAMEMESSAGE)
+                    .runeLiteFormattedMessage(msg.build())
+                    .build());
+            }
+        }
+        overTierSummary = over.isEmpty() ? null : String.join(", ", over);
     }
 
     /** Normalise an OSRS name for comparison (RuneLite uses non-breaking spaces). */
@@ -521,6 +626,8 @@ public class FateLockedPlugin extends Plugin
         boolean unlocked = current != null
             && bundle.lockStateAt(current) == FateLockedBundle.LockState.UNLOCKED;
         panel.update(bundle, current, label, unlocked);
+        // A fresh bundle may change unlocked tiers — re-check worn gear.
+        recomputeOverTierGear();
     }
 
     private static BufferedImage createIcon()

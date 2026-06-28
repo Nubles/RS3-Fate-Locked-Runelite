@@ -140,6 +140,17 @@ public interface FateLockedConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "warnOverTierGear",
+        name = "Warn on over-tier gear",
+        description = "Chat + HUD warning when you're wearing an item above your unlocked equipment tier for that slot",
+        section = warningsSection
+    )
+    default boolean warnOverTierGear()
+    {
+        return true;
+    }
+
+    @ConfigItem(
         keyName = "rollNudges",
         name = "Roll reminders",
         description = "Chat reminder on level-up, quest, diary and combat-achievement completion that it may be worth a roll in the tracker",

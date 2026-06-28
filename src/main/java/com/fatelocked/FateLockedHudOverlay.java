@@ -123,6 +123,17 @@ public class FateLockedHudOverlay extends OverlayPanel
                 .build());
         }
 
+        String overTier = plugin.getOverTierSummary();
+        if (overTier != null)
+        {
+            panelComponent.getChildren().add(LineComponent.builder()
+                .left("Over-tier")
+                .right(truncate(overTier, 20))
+                .leftColor(RED)
+                .rightColor(RED)
+                .build());
+        }
+
         return super.render(graphics);
     }
 
