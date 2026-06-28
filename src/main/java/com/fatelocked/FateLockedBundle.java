@@ -4,16 +4,21 @@ import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import lombok.Getter;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.zip.GZIPInputStream;
 
 /**
  * Parsed bundle exported by the Fate Locked web app.
@@ -155,15 +160,45 @@ public class FateLockedBundle
             Collections.<CanonicalChunk, String>emptyMap());
     }
 
+    /** Marker prefix the web app uses for a gzip+base64 clipboard payload. */
+    private static final String GZ_PREFIX = "FLGZ:";
+
     public static FateLockedBundle loadFromFile(Gson gson, Path path) throws IOException, JsonSyntaxException
     {
         String json = new String(Files.readAllBytes(path));
         return loadFromJson(gson, json);
     }
 
+    /** Inflate a base64-encoded gzip payload (the compressed clipboard form) to JSON. */
+    private static String inflate(String base64)
+    {
+        try
+        {
+            byte[] gz = Base64.getDecoder().decode(base64.trim());
+            try (GZIPInputStream in = new GZIPInputStream(new ByteArrayInputStream(gz));
+                 ByteArrayOutputStream out = new ByteArrayOutputStream())
+            {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                return new String(out.toByteArray(), StandardCharsets.UTF_8);
+            }
+        }
+        catch (IllegalArgumentException | IOException ex)
+        {
+            throw new JsonSyntaxException("Could not read compressed bundle", ex);
+        }
+    }
+
     public static FateLockedBundle loadFromJson(Gson gson, String json) throws JsonSyntaxException
     {
-        RawBundle raw = gson.fromJson(json, RawBundle.class);
+        // The web app compresses the clipboard copy (gzip+base64, "FLGZ:" prefix)
+        // so it isn't dumping ~115 KB of mostly-static data onto the clipboard.
+        // The downloaded file stays plain JSON. Accept both.
+        String text = json != null && json.trim().startsWith(GZ_PREFIX)
+            ? inflate(json.trim().substring(GZ_PREFIX.length())) : json;
+
+        RawBundle raw = gson.fromJson(text, RawBundle.class);
         if (raw == null || raw.chunks == null)
         {
             return empty();

@@ -19,6 +19,15 @@ To run a local build without the Plugin Hub:
    load with that flag.
 3. The plugin appears in the plugin list as **Fate Locked Ironman**.
 
+## Bundle encodings
+
+The plugin's import accepts two forms of the same v3 bundle:
+- **Plain JSON** — the downloaded `fate-locked-bundle-*.json` file (readable,
+  inspectable; what the file-watch / Downloads auto-detect path reads).
+- **`FLGZ:` + base64(gzip(json))** — the *clipboard* copy, compressed (~65%
+  smaller) so the web app doesn't dump ~110 KB onto the user's clipboard. The
+  plugin detects the `FLGZ:` prefix and inflates it.
+
 ## Bundle format (v3)
 
 The web app exports a JSON bundle the plugin reads. v1/v2 bundles still load;
