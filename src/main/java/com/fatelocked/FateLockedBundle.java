@@ -42,6 +42,7 @@ import java.util.Set;
 public class FateLockedBundle
 {
     public enum LockState { UNLOCKED, LOCKED, UNAUTHORED }
+    public enum Reach { REACHABLE, LOCKED, UNKNOWN }
 
     private final String runId;
     private final String profileName;
@@ -71,6 +72,14 @@ public class FateLockedBundle
     /** Misthalin + its starter areas: always unlocked, mirroring the app. */
     private final Set<String> alwaysUnlocked;
 
+    /** Cached unlock-progress counts for the HUD. */
+    @Getter private final int unlockedChunks;
+    @Getter private final int totalChunks;
+    @Getter private final int unlockedAreas;
+    @Getter private final int totalAreas;
+    /** Normalised monster name → chunks it appears in (lazy; from chunkContent). */
+    private Map<String, Set<CanonicalChunk>> monsterIndex;
+
     private FateLockedBundle(RawBundle raw,
                              Map<String, Set<CanonicalChunk>> regionChunks,
                              Map<String, Set<CanonicalChunk>> subAreaChunks,
@@ -99,6 +108,25 @@ public class FateLockedBundle
         List<String> misthalinKids = this.regionGroups.get("Misthalin");
         if (misthalinKids != null) always.addAll(misthalinKids);
         this.alwaysUnlocked = always;
+
+        // Unlock progress (computed once; lockStateAt/isUnlocked are ready now).
+        int tc = 0, uc = 0;
+        for (Set<CanonicalChunk> set : regionChunks.values())
+        {
+            for (CanonicalChunk c : set)
+            {
+                tc++;
+                if (lockStateAt(c) == LockState.UNLOCKED) uc++;
+            }
+        }
+        this.totalChunks = tc;
+        this.unlockedChunks = uc;
+
+        Set<String> areas = subAreaChunks.isEmpty() ? regionChunks.keySet() : subAreaChunks.keySet();
+        int ua = 0;
+        for (String a : areas) if (isUnlocked(a)) ua++;
+        this.totalAreas = areas.size();
+        this.unlockedAreas = ua;
     }
 
     public static FateLockedBundle empty()
@@ -229,6 +257,51 @@ public class FateLockedBundle
         String region = regionAt(chunk);
         if (region != null) return isUnlocked(region) ? LockState.UNLOCKED : LockState.LOCKED;
         return LockState.UNAUTHORED;
+    }
+
+    /**
+     * Is a monster (e.g. a slayer task) reachable? REACHABLE if it appears in any
+     * unlocked chunk, LOCKED if every chunk holding it is locked, UNKNOWN if we
+     * have no location for it (its name isn't in the chunk-content summary).
+     */
+    public Reach monsterReach(String monsterName)
+    {
+        if (monsterName == null || monsterName.trim().isEmpty()) return Reach.UNKNOWN;
+        if (monsterIndex == null) buildMonsterIndex();
+        Set<CanonicalChunk> chunks = monsterIndex.get(normMonster(monsterName));
+        if (chunks == null || chunks.isEmpty()) return Reach.UNKNOWN;
+        for (CanonicalChunk c : chunks)
+        {
+            if (lockStateAt(c) == LockState.UNLOCKED) return Reach.REACHABLE;
+        }
+        return Reach.LOCKED;
+    }
+
+    private void buildMonsterIndex()
+    {
+        Map<String, Set<CanonicalChunk>> idx = new HashMap<>();
+        for (Map.Entry<String, Map<String, List<String>>> e : chunkContent.entrySet())
+        {
+            List<String> mon = e.getValue().get("mon");
+            if (mon == null) continue;
+            String[] parts = e.getKey().split(",");
+            if (parts.length != 2) continue;
+            CanonicalChunk c;
+            try { c = new CanonicalChunk(Integer.parseInt(parts[0]), Integer.parseInt(parts[1])); }
+            catch (NumberFormatException ex) { continue; }
+            for (String m : mon)
+            {
+                idx.computeIfAbsent(normMonster(m), k -> new HashSet<>()).add(c);
+            }
+        }
+        monsterIndex = idx;
+    }
+
+    /** Lowercase + drop a trailing 's' so slayer plurals match singular monster names. */
+    private static String normMonster(String s)
+    {
+        String t = s.toLowerCase().trim();
+        return t.endsWith("s") ? t.substring(0, t.length() - 1) : t;
     }
 
     // ---- wire format ---------------------------------------------------------

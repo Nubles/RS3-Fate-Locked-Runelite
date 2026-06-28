@@ -140,6 +140,17 @@ public interface FateLockedConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "warnLockedSlayer",
+        name = "Warn on locked slayer task",
+        description = "Chat + HUD warning when your assigned slayer monster only lives in chunks you haven't unlocked",
+        section = warningsSection
+    )
+    default boolean warnLockedSlayer()
+    {
+        return true;
+    }
+
+    @ConfigItem(
         keyName = "warnOverTierGear",
         name = "Warn on over-tier gear",
         description = "Chat + HUD warning when you're wearing an item above your unlocked equipment tier for that slot",

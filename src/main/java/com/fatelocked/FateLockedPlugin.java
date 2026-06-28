@@ -57,6 +57,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -124,6 +126,16 @@ public class FateLockedPlugin extends Plugin
     @Getter private volatile String overTierSummary;
     /** Item ids already warned about this session, to avoid chat spam. */
     private final Set<Integer> warnedOverTier = new HashSet<>();
+
+    /** Assigned slayer monster from chat (matches both "to kill X;" and Konar's "in <area>"). */
+    private static final Pattern SLAYER_TASK =
+        Pattern.compile("to kill\\s+(?:the\\s+)?(.+?)(?:\\s+in\\s+|[;:.])", Pattern.CASE_INSENSITIVE);
+    /** Current slayer task monster name (raw), or null. */
+    private String slayerTask;
+    /** The locked slayer task to show on the HUD, or null. */
+    @Getter private volatile String slayerTaskWarn;
+    /** Task we've already chat-warned about, to warn at most once per assignment. */
+    private String slayerWarnedFor;
     /** Last account name we warned about, so we nag at most once per character. */
     private String lastAccountWarned;
 
@@ -189,6 +201,10 @@ public class FateLockedPlugin extends Plugin
         {
             recomputeOverTierGear();
         }
+        else if ("warnLockedSlayer".equals(key))
+        {
+            recomputeSlayer();
+        }
     }
 
     @Subscribe
@@ -232,17 +248,63 @@ public class FateLockedPlugin extends Plugin
     @Subscribe
     public void onChatMessage(ChatMessage ev)
     {
-        if (!config.rollNudges()) return;
         if (ev.getType() != ChatMessageType.GAMEMESSAGE && ev.getType() != ChatMessageType.SPAM) return;
-        String m = ev.getMessage() == null ? "" : ev.getMessage().toLowerCase();
+        String raw = ev.getMessage() == null ? "" : ev.getMessage();
+        String m = raw.toLowerCase();
 
-        if (m.contains("combat task:"))
+        if (config.rollNudges())
         {
-            nudge("Combat achievement complete — may be worth a roll.");
+            if (m.contains("combat task:"))
+            {
+                nudge("Combat achievement complete — may be worth a roll.");
+            }
+            else if (m.contains("completed all of the") && m.contains("tasks"))
+            {
+                nudge("Achievement diary tier complete — may be worth a roll.");
+            }
         }
-        else if (m.contains("completed all of the") && m.contains("tasks"))
+
+        // Slayer assignment / task-check messages mention the monster.
+        if (config.warnLockedSlayer() && m.contains("to kill"))
         {
-            nudge("Achievement diary tier complete — may be worth a roll.");
+            Matcher mat = SLAYER_TASK.matcher(raw);
+            if (mat.find())
+            {
+                slayerTask = mat.group(1).trim();
+                recomputeSlayer();
+            }
+        }
+    }
+
+    /** Re-check whether the current slayer task's monster is in an unlocked chunk. */
+    private void recomputeSlayer()
+    {
+        if (!config.warnLockedSlayer() || slayerTask == null || slayerTask.isEmpty())
+        {
+            slayerTaskWarn = null;
+            return;
+        }
+        FateLockedBundle.Reach reach = bundle.monsterReach(slayerTask);
+        if (reach == FateLockedBundle.Reach.LOCKED)
+        {
+            slayerTaskWarn = slayerTask;
+            if (!slayerTask.equalsIgnoreCase(slayerWarnedFor))
+            {
+                slayerWarnedFor = slayerTask;
+                ChatMessageBuilder msg = new ChatMessageBuilder()
+                    .append(ChatColorType.HIGHLIGHT).append("[Fate Locked] ")
+                    .append(ChatColorType.NORMAL).append("Your slayer task (")
+                    .append(ChatColorType.HIGHLIGHT).append(slayerTask)
+                    .append(ChatColorType.NORMAL).append(") is in a locked area.");
+                chatMessageManager.queue(QueuedMessage.builder()
+                    .type(ChatMessageType.GAMEMESSAGE)
+                    .runeLiteFormattedMessage(msg.build())
+                    .build());
+            }
+        }
+        else
+        {
+            slayerTaskWarn = null; // reachable or unknown — no warning
         }
     }
 
@@ -626,8 +688,10 @@ public class FateLockedPlugin extends Plugin
         boolean unlocked = current != null
             && bundle.lockStateAt(current) == FateLockedBundle.LockState.UNLOCKED;
         panel.update(bundle, current, label, unlocked);
-        // A fresh bundle may change unlocked tiers — re-check worn gear.
+        // A fresh bundle may change unlocked tiers / areas — re-check worn gear
+        // and the current slayer task.
         recomputeOverTierGear();
+        recomputeSlayer();
     }
 
     private static BufferedImage createIcon()

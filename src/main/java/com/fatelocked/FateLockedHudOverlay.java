@@ -123,6 +123,27 @@ public class FateLockedHudOverlay extends OverlayPanel
                 .build());
         }
 
+        if (bundle.getTotalChunks() > 0)
+        {
+            int pct = (int) Math.round(100.0 * bundle.getUnlockedChunks() / bundle.getTotalChunks());
+            panelComponent.getChildren().add(LineComponent.builder()
+                .left("Unlocked")
+                .right(bundle.getUnlockedAreas() + "/" + bundle.getTotalAreas() + " · " + pct + "%")
+                .rightColor(GOLD)
+                .build());
+        }
+
+        String slayerWarn = plugin.getSlayerTaskWarn();
+        if (slayerWarn != null)
+        {
+            panelComponent.getChildren().add(LineComponent.builder()
+                .left("Slayer")
+                .right(truncate(slayerWarn, 18) + " ⚠")
+                .leftColor(RED)
+                .rightColor(RED)
+                .build());
+        }
+
         String overTier = plugin.getOverTierSummary();
         if (overTier != null)
         {

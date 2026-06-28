@@ -25,6 +25,10 @@ touch content you haven't unlocked yet.
   combat-achievement completion that it may be worth a roll in the tracker.
 - **Over-tier gear warning.** Warns (chat + HUD) when you're wearing an item
   above your unlocked equipment tier for that slot.
+- **Locked slayer-task warning.** Warns (chat + HUD) when your assigned slayer
+  monster only lives in chunks you haven't unlocked.
+- **Unlock progress.** A HUD line with how many areas you've unlocked and the
+  percentage of authored chunks opened.
 - **Locked right-click tags.** Menu entries for NPCs, objects, ground items and
   walks that target a locked chunk get a red **(LOCKED)** tag appended — the
   warning arrives *before* you click, where feasible.
