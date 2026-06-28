@@ -7,6 +7,7 @@ import lombok.Getter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -54,8 +55,12 @@ public class FateLockedBundle
     private final Map<String, List<String>> regionGroups;
     /** Sub-area names the player has unlocked. */
     private final Set<String> unlockedRegions;
-    /** Slim "what's here" per chunk: "cx,cy" → content names. v3+, optional. */
-    private final Map<String, List<String>> chunkContent;
+    /** Slim "what's here" per chunk: "cx,cy" → category ("mon"/"shop"/"farm"/"poi") → names. v3+, optional. */
+    private final Map<String, Map<String, List<String>>> chunkContent;
+    /** Category key → display label, in render order. */
+    private static final String[][] CONTENT_CATS = {
+        { "mon", "Monsters" }, { "shop", "Shops" }, { "farm", "Farming" }, { "poi", "Points" }
+    };
     /** Live run state for the HUD (null on v1 bundles). */
     private final RunState state;
 
@@ -80,7 +85,7 @@ public class FateLockedBundle
         this.unlockedRegions = raw == null || raw.unlockedRegions == null
             ? Collections.<String>emptySet() : new HashSet<>(raw.unlockedRegions);
         this.chunkContent = raw == null || raw.chunkContent == null
-            ? Collections.<String, List<String>>emptyMap() : raw.chunkContent;
+            ? Collections.<String, Map<String, List<String>>>emptyMap() : raw.chunkContent;
         this.state = raw == null ? null : raw.state;
         this.chunkToRegion = chunkToRegion;
         this.chunkToSubArea = chunkToSubArea;
@@ -164,11 +169,21 @@ public class FateLockedBundle
         return chunkToSubArea.get(chunk);
     }
 
-    /** Notable content (monster names) in this chunk; empty when none/unknown. */
+    /**
+     * "What's here" for a chunk as display lines ("Monsters: …", "Shops: …",
+     * "Farming: …", "Points: …"); empty when none/unknown.
+     */
     public List<String> contentAt(CanonicalChunk chunk)
     {
-        List<String> v = chunkContent.get(chunk.getCx() + "," + chunk.getCy());
-        return v == null ? Collections.<String>emptyList() : v;
+        Map<String, List<String>> e = chunkContent.get(chunk.getCx() + "," + chunk.getCy());
+        if (e == null || e.isEmpty()) return Collections.<String>emptyList();
+        List<String> out = new ArrayList<>();
+        for (String[] cat : CONTENT_CATS)
+        {
+            List<String> v = e.get(cat[0]);
+            if (v != null && !v.isEmpty()) out.add(cat[1] + ": " + String.join(", ", v));
+        }
+        return out;
     }
 
     /** "Falador · Asgarnia", "Asgarnia", or null when unauthored. */
@@ -238,7 +253,7 @@ public class FateLockedBundle
         Map<String, List<RawChunk>> subAreaChunks;
         Map<String, List<String>> regionGroups;
         List<String> unlockedRegions;
-        Map<String, List<String>> chunkContent;
+        Map<String, Map<String, List<String>>> chunkContent;
         RunState state;
     }
 

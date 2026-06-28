@@ -264,7 +264,7 @@ class FateLockedPanel extends PluginPanel
             unknownNote.setText(unnamed + " map chunks in unnamed terrain");
             unknownNote.setForeground(Color.GRAY);
 
-            hereList.setText(here.isEmpty() ? "—" : String.join(", ", here));
+            hereList.setText(here.isEmpty() ? "—" : String.join("\n", here));
             hereList.setForeground(Color.LIGHT_GRAY);
         });
     }
