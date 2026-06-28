@@ -27,6 +27,8 @@ final class Teleports
         "ring of wealth", "necklace of passage", "burning amulet", "digsite pendant",
         "slayer ring", "ectophial", "royal seed pod", "enchanted lyre",
         "drakan's medallion", "xeric's talisman", "chronicle", "ring of the elements",
+        // Transport networks whose right-click options name a destination.
+        "spirit tree", "gnome glider", "glider", "charter", "fairy ring", "quetzal",
     };
 
     private static final Map<String, int[]> PLACES = new LinkedHashMap<>();
@@ -134,6 +136,23 @@ final class Teleports
         p("darkmeyer", 56, 52);
         p("rellekka", 41, 56);
         p("xeric's lookout", 24, 55);
+
+        // Spirit tree network (right-click options are destination names)
+        p("tree gnome stronghold", 38, 53);
+        p("gnome stronghold", 38, 53);
+        p("tree gnome village", 39, 49);
+        p("battlefield of khazard", 41, 49);
+        p("etceteria", 40, 60);
+        p("brimhaven", 43, 50);
+        p("hosidius", 24, 53);
+        // Gnome glider network
+        p("sindarpos", 44, 54);
+        p("ta quir priw", 38, 53);
+        p("lemanto andra", 51, 53);
+        p("kar-hewo", 51, 50);
+        p("gandius", 46, 46);
+        p("lemantolly undri", 39, 46);
+        p("ookookolly undri", 43, 43);
 
         List<String> keys = new ArrayList<>(PLACES.keySet());
         keys.sort((a, b) -> b.length() - a.length()); // longest first for specificity
