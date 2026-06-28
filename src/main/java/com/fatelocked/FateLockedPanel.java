@@ -2,6 +2,7 @@ package com.fatelocked;
 
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.PluginPanel;
+import net.runelite.client.util.LinkBrowser;
 
 import javax.inject.Inject;
 import javax.swing.Box;
@@ -36,6 +37,7 @@ import java.util.function.Consumer;
  */
 class FateLockedPanel extends PluginPanel
 {
+    private static final String TRACKER_URL = "https://nubles.github.io/OSRS-Fate-Locked/";
     private static final Color GREEN = new Color(52, 211, 153);
     private static final Color RED = new Color(248, 113, 113);
     private static final Color GOLD = new Color(245, 158, 11);
@@ -76,6 +78,13 @@ class FateLockedPanel extends PluginPanel
         col.setBackground(ColorScheme.DARK_GRAY_COLOR);
 
         col.add(title("FATE LOCKED IRONMAN"));
+        col.add(Box.createVerticalStrut(6));
+
+        JButton trackerBtn = new JButton("Open web tracker");
+        trackerBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        trackerBtn.setToolTipText("Open the Fate Locked Ironman tracker in your browser");
+        trackerBtn.addActionListener(e -> LinkBrowser.browse(TRACKER_URL));
+        col.add(trackerBtn);
         col.add(Box.createVerticalStrut(10));
 
         col.add(section("RUN"));
