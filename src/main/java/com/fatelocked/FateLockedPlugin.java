@@ -16,8 +16,10 @@ import net.runelite.api.MenuEntry;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
 import net.runelite.api.Skill;
+import net.runelite.api.Varbits;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.ChatMessage;
+import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ItemContainerChanged;
@@ -113,6 +115,24 @@ public class FateLockedPlugin extends Plugin
 
     /** Last seen real level per skill, to detect genuine level-ups for roll nudges. */
     private final Map<Skill, Integer> lastLevels = new EnumMap<>(Skill.class);
+
+    /** Achievement-diary completion varbits (1 = that tier done), watched for 0→1. */
+    private static final int[] DIARY_VARBITS = {
+        Varbits.DIARY_ARDOUGNE_EASY, Varbits.DIARY_ARDOUGNE_MEDIUM, Varbits.DIARY_ARDOUGNE_HARD, Varbits.DIARY_ARDOUGNE_ELITE,
+        Varbits.DIARY_DESERT_EASY, Varbits.DIARY_DESERT_MEDIUM, Varbits.DIARY_DESERT_HARD, Varbits.DIARY_DESERT_ELITE,
+        Varbits.DIARY_FALADOR_EASY, Varbits.DIARY_FALADOR_MEDIUM, Varbits.DIARY_FALADOR_HARD, Varbits.DIARY_FALADOR_ELITE,
+        Varbits.DIARY_FREMENNIK_EASY, Varbits.DIARY_FREMENNIK_MEDIUM, Varbits.DIARY_FREMENNIK_HARD, Varbits.DIARY_FREMENNIK_ELITE,
+        Varbits.DIARY_KANDARIN_EASY, Varbits.DIARY_KANDARIN_MEDIUM, Varbits.DIARY_KANDARIN_HARD, Varbits.DIARY_KANDARIN_ELITE,
+        Varbits.DIARY_KARAMJA_EASY, Varbits.DIARY_KARAMJA_MEDIUM, Varbits.DIARY_KARAMJA_HARD, Varbits.DIARY_KARAMJA_ELITE,
+        Varbits.DIARY_KOUREND_EASY, Varbits.DIARY_KOUREND_MEDIUM, Varbits.DIARY_KOUREND_HARD, Varbits.DIARY_KOUREND_ELITE,
+        Varbits.DIARY_LUMBRIDGE_EASY, Varbits.DIARY_LUMBRIDGE_MEDIUM, Varbits.DIARY_LUMBRIDGE_HARD, Varbits.DIARY_LUMBRIDGE_ELITE,
+        Varbits.DIARY_MORYTANIA_EASY, Varbits.DIARY_MORYTANIA_MEDIUM, Varbits.DIARY_MORYTANIA_HARD, Varbits.DIARY_MORYTANIA_ELITE,
+        Varbits.DIARY_VARROCK_EASY, Varbits.DIARY_VARROCK_MEDIUM, Varbits.DIARY_VARROCK_HARD, Varbits.DIARY_VARROCK_ELITE,
+        Varbits.DIARY_WESTERN_EASY, Varbits.DIARY_WESTERN_MEDIUM, Varbits.DIARY_WESTERN_HARD, Varbits.DIARY_WESTERN_ELITE,
+        Varbits.DIARY_WILDERNESS_EASY, Varbits.DIARY_WILDERNESS_MEDIUM, Varbits.DIARY_WILDERNESS_HARD, Varbits.DIARY_WILDERNESS_ELITE,
+    };
+    /** Last seen value per diary varbit; first observation per login is a baseline (no nudge). */
+    private final Map<Integer, Integer> diaryState = new HashMap<>();
     /** Widget group shown when a quest is completed (the reward scroll). */
     private static final int QUEST_COMPLETED_GROUP_ID = 153;
 
@@ -244,6 +264,7 @@ public class FateLockedPlugin extends Plugin
             // The client fires StatChanged for every skill at login; clearing
             // here lets those re-establish the baseline without firing nudges.
             lastLevels.clear();
+            diaryState.clear(); // re-baseline diaries this login (don't nudge already-done tiers)
             warnedOverTier.clear(); // re-warn over-tier gear once per session
 
         }
@@ -279,16 +300,12 @@ public class FateLockedPlugin extends Plugin
         String raw = ev.getMessage() == null ? "" : ev.getMessage();
         String m = raw.toLowerCase();
 
-        if (config.rollNudges())
+        // Combat achievements stay on chat (their varbits are progress counts with
+        // totals that shift as Jagex adds tasks). Diaries are detected via varbit
+        // (onVarbitChanged), quests via the reward widget — both more reliable.
+        if (config.rollNudges() && m.contains("combat task:"))
         {
-            if (m.contains("combat task:"))
-            {
-                nudge("Combat achievement complete — may be worth a roll.");
-            }
-            else if (m.contains("completed all of the") && m.contains("tasks"))
-            {
-                nudge("Achievement diary tier complete — may be worth a roll.");
-            }
+            nudge("Combat achievement complete — may be worth a roll.");
         }
 
         // Slayer assignment / task-check messages mention the monster.
@@ -343,6 +360,23 @@ public class FateLockedPlugin extends Plugin
         if (ev.getGroupId() == QUEST_COMPLETED_GROUP_ID)
         {
             nudge("Quest complete — may be worth a roll.");
+        }
+    }
+
+    @Subscribe
+    public void onVarbitChanged(VarbitChanged ev)
+    {
+        if (!config.rollNudges()) return;
+        // Reliable diary-tier detection: each varbit flips 0→1 when that tier is
+        // finished. The first value seen per login is a baseline (no nudge).
+        for (int id : DIARY_VARBITS)
+        {
+            int v = client.getVarbitValue(id);
+            Integer prev = diaryState.put(id, v);
+            if (prev != null && prev == 0 && v == 1)
+            {
+                nudge("Achievement diary tier complete — may be worth a roll.");
+            }
         }
     }
 
