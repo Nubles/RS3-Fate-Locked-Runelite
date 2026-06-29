@@ -931,10 +931,9 @@ public class FateLockedPlugin extends Plugin
     {
         if (!config.autoReload()) return;
 
-        // Poll the effective bundle file on RuneLite's shared executor, reloading
-        // when it changes — or when a newer file becomes the auto-detect target
-        // (e.g. a fresh export landed in Downloads). No background worker of our
-        // own and no blocking calls.
+        // Poll the bundle file in .runelite/fate-locked on RuneLite's shared
+        // executor, reloading when it changes (or a newer one is dropped in). No
+        // background worker of our own and no blocking calls.
         watcherFuture = executor.scheduleWithFixedDelay(() -> {
             Path file = effectiveBundlePath();
             if (file == null) return;
