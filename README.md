@@ -63,6 +63,11 @@ downloads it — then get it into the plugin whichever way suits you:
   **Import from clipboard** (or bind the re-import hotkey). No file at all.
 - **Paste JSON.** Paste the export into the side-panel box and click *Import
   pasted JSON*.
+- **Online sync** *(optional).* In the web app, enable **Online sync** to get a
+  pairing code; paste it into the plugin's **Online sync code**. Your run then
+  syncs over the internet (no clipboard/files) — handy when the game and the web
+  app are on different machines. Outbound-only, ephemeral (24h); see
+  [CONTRIBUTING.md](CONTRIBUTING.md).
 - **Drop the file in the data folder.** Move the downloaded
   `fate-locked-bundle-*.json` into `~/.runelite/fate-locked/` (`%USERPROFILE%\.runelite\fate-locked\`
   on Windows); the plugin loads the newest one there and hot-reloads on change.

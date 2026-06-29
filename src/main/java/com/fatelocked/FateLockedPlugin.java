@@ -51,6 +51,12 @@ import net.runelite.client.ui.overlay.worldmap.WorldMapPoint;
 import net.runelite.client.ui.overlay.worldmap.WorldMapPointManager;
 import net.runelite.api.Point;
 
+import okhttp3.Call;
+import okhttp3.Callback;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+
 import javax.inject.Inject;
 import java.awt.Color;
 import java.awt.Graphics2D;
@@ -105,6 +111,10 @@ public class FateLockedPlugin extends Plugin
     @Inject private WorldMapPointManager worldMapPointManager;
     @Inject private InfoBoxManager infoBoxManager;
     @Inject private KeyManager keyManager;
+    @Inject private OkHttpClient okHttpClient;
+
+    private ScheduledFuture<?> relayPollFuture;
+    private volatile String lastRelayVersion;
 
     /** Configurable hotkey: re-import the bundle from the clipboard. */
     private final HotkeyListener reimportHotkey = new HotkeyListener(() -> config.reimportHotkey())
@@ -224,6 +234,7 @@ public class FateLockedPlugin extends Plugin
         startWatcher();
         refreshInfoBoxes();
         keyManager.registerKeyListener(reimportHotkey);
+        startRelayPoll();
     }
 
     @Override
@@ -240,6 +251,7 @@ public class FateLockedPlugin extends Plugin
             navButton = null;
         }
         stopWatcher();
+        stopRelayPoll();
         keyManager.unregisterKeyListener(reimportHotkey);
         for (WorldMapPoint p : mapMarkers) worldMapPointManager.remove(p);
         mapMarkers.clear();
@@ -274,6 +286,10 @@ public class FateLockedPlugin extends Plugin
         else if ("showInfoBoxes".equals(key))
         {
             refreshInfoBoxes();
+        }
+        else if ("syncCode".equals(key) || "relayUrl".equals(key))
+        {
+            lastRelayVersion = null; // re-fetch from the new code/URL
         }
     }
 
@@ -953,6 +969,79 @@ public class FateLockedPlugin extends Plugin
             watcherFuture.cancel(false);
             watcherFuture = null;
         }
+    }
+
+    // ── Online relay sync ─────────────────────────────────────────────────────
+    // Optional, opt-in (config.syncCode). Outbound-only: poll the relay for the
+    // run bundle and import on change. Uses the injected OkHttpClient, async, off
+    // the client thread — no inbound server, Hub-compliant.
+
+    private void startRelayPoll()
+    {
+        relayPollFuture = executor.scheduleWithFixedDelay(this::pollRelay, 2, 4, TimeUnit.SECONDS);
+    }
+
+    private void stopRelayPoll()
+    {
+        if (relayPollFuture != null)
+        {
+            relayPollFuture.cancel(false);
+            relayPollFuture = null;
+        }
+    }
+
+    private void pollRelay()
+    {
+        String code = config.syncCode();
+        String base = config.relayUrl();
+        if (code == null || code.trim().isEmpty() || base == null || base.trim().isEmpty()) return;
+
+        final Request request;
+        try
+        {
+            Request.Builder rb = new Request.Builder()
+                .url(base.trim().replaceAll("/+$", "") + "/r/" + code.trim());
+            if (lastRelayVersion != null) rb.header("If-None-Match", lastRelayVersion);
+            request = rb.build();
+        }
+        catch (IllegalArgumentException ex)
+        {
+            return; // malformed relay URL — ignore until corrected
+        }
+
+        okHttpClient.newCall(request).enqueue(new Callback()
+        {
+            @Override
+            public void onFailure(Call call, IOException e)
+            {
+                log.debug("Relay poll failed: {}", e.getMessage());
+            }
+
+            @Override
+            public void onResponse(Call call, Response response)
+            {
+                try (Response r = response)
+                {
+                    if (r.code() == 304 || !r.isSuccessful() || r.body() == null) return;
+                    RelayMessage msg = gson.fromJson(r.body().string(), RelayMessage.class);
+                    if (msg == null || msg.payload == null) return;
+                    String etag = r.header("ETag");
+                    lastRelayVersion = etag != null ? etag : String.valueOf(msg.version);
+                    String payload = msg.payload;
+                    clientThread.invoke(() -> applyPastedBundle(payload));
+                }
+                catch (RuntimeException ex)
+                {
+                    log.debug("Relay payload parse failed: {}", ex.getMessage());
+                }
+            }
+        });
+    }
+
+    private static final class RelayMessage
+    {
+        int version;
+        String payload;
     }
 
     /** Last-modified time of the bundle file, or null if it doesn't exist yet. */
