@@ -1030,7 +1030,7 @@ public class FateLockedPlugin extends Plugin
                     String payload = msg.payload;
                     clientThread.invoke(() -> applyPastedBundle(payload));
                 }
-                catch (RuntimeException ex)
+                catch (Exception ex)
                 {
                     log.debug("Relay payload parse failed: {}", ex.getMessage());
                 }
