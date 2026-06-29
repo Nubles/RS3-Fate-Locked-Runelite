@@ -60,13 +60,14 @@ Click **RL** in the web app — it copies the bundle to your clipboard *and*
 downloads it — then get it into the plugin whichever way suits you:
 
 - **Import from clipboard** *(easiest).* Open the plugin side panel and click
-  **Import from clipboard**. That's it — no file, no pasting.
-- **Auto-detect from Downloads.** Leave **Bundle file path** blank; the plugin
-  loads the newest `fate-locked-bundle-*.json` from your Downloads folder and
-  keeps watching for newer exports.
-- **Explicit file path.** Point **Bundle file path** at a specific `.json`; it's
-  watched and hot-reloaded whenever it changes.
-- **Paste JSON.** Paste into the side-panel box and click *Import pasted JSON*.
+  **Import from clipboard** (or bind the re-import hotkey). No file at all.
+- **Paste JSON.** Paste the export into the side-panel box and click *Import
+  pasted JSON*.
+- **Drop the file in the data folder.** Move the downloaded
+  `fate-locked-bundle-*.json` into `~/.runelite/fate-locked/` (`%USERPROFILE%\.runelite\fate-locked\`
+  on Windows); the plugin loads the newest one there and hot-reloads on change.
+  (The plugin only reads from this folder — a RuneLite plugin can't read your
+  Downloads or arbitrary paths.)
 
 ## Configuration
 

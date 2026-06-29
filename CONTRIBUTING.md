@@ -23,7 +23,7 @@ To run a local build without the Plugin Hub:
 
 The plugin's import accepts two forms of the same v3 bundle:
 - **Plain JSON** — the downloaded `fate-locked-bundle-*.json` file (readable,
-  inspectable; what the file-watch / Downloads auto-detect path reads).
+  inspectable; what the file-watch path reads from ~/.runelite/fate-locked/).
 - **`FLGZ:` + base64(gzip(json))** — the *clipboard* copy, compressed (~65%
   smaller) so the web app doesn't dump ~110 KB onto the user's clipboard. The
   plugin detects the `FLGZ:` prefix and inflates it.

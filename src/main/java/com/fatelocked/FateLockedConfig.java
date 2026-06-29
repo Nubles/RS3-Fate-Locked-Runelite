@@ -21,35 +21,11 @@ public interface FateLockedConfig extends Config
     String bundleSection = "bundleSection";
 
     @ConfigItem(
-        keyName = "bundlePath",
-        name = "Bundle file path",
-        description = "Absolute path to the .json exported from the Fate Locked tracker. Leave blank to auto-detect the newest fate-locked-bundle file in your Downloads folder.",
-        section = bundleSection,
-        position = 0
-    )
-    default String bundlePath()
-    {
-        return "";
-    }
-
-    @ConfigItem(
-        keyName = "autoDetectDownloads",
-        name = "Auto-detect from Downloads",
-        description = "When the path above is blank, automatically load the newest fate-locked-bundle-*.json from your Downloads folder",
-        section = bundleSection,
-        position = 1
-    )
-    default boolean autoDetectDownloads()
-    {
-        return true;
-    }
-
-    @ConfigItem(
         keyName = "autoReload",
         name = "Auto-reload on change",
-        description = "Re-parse the bundle whenever it changes (or a newer one is exported)",
+        description = "Re-load the newest fate-locked-bundle-*.json from .runelite/fate-locked whenever it changes. (Or just use Import from clipboard in the side panel.)",
         section = bundleSection,
-        position = 2
+        position = 0
     )
     default boolean autoReload()
     {

@@ -34,6 +34,7 @@ import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
 import net.runelite.client.config.ConfigManager;
+import net.runelite.client.RuneLite;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.input.KeyManager;
 import net.runelite.client.util.HotkeyListener;
@@ -61,7 +62,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -153,6 +153,8 @@ public class FateLockedPlugin extends Plugin
     private static final int QUEST_COMPLETED_GROUP_ID = 153;
     /** Crystal key — a gold-key item icon for the Keys infobox. */
     private static final int KEYS_ICON_ITEM = 989;
+    /** Plugin-specific data dir under .runelite/ — all file I/O is confined here. */
+    private static final File DATA_DIR = new File(RuneLite.RUNELITE_DIR, "fate-locked");
 
     /** RuneLite equipment slot → the web app's slot name (for tier lookup). */
     private static final Map<EquipmentInventorySlot, String> SLOT_NAMES = new LinkedHashMap<>();
@@ -202,6 +204,7 @@ public class FateLockedPlugin extends Plugin
     @Override
     protected void startUp()
     {
+        if (!DATA_DIR.exists()) DATA_DIR.mkdirs();
         overlayManager.add(worldMapOverlay);
         overlayManager.add(sceneOverlay);
         overlayManager.add(minimapOverlay);
@@ -250,7 +253,7 @@ public class FateLockedPlugin extends Plugin
     {
         if (!FateLockedConfig.GROUP.equals(ev.getGroup())) return;
         String key = ev.getKey();
-        if ("bundlePath".equals(key) || "autoReload".equals(key) || "autoDetectDownloads".equals(key))
+        if ("autoReload".equals(key))
         {
             reloadBundle();
             stopWatcher();
@@ -723,22 +726,13 @@ public class FateLockedPlugin extends Plugin
     }
 
     /**
-     * The bundle file to read: the configured path if set, otherwise (when
-     * auto-detect is on) the newest fate-locked-bundle file in Downloads.
+     * The bundle file to read: the newest fate-locked-bundle-*.json in the
+     * plugin's data dir under .runelite/. All file I/O is confined there (Hub
+     * rule); drop a bundle in there, or use the clipboard import instead.
      */
     private Path effectiveBundlePath()
     {
-        String p = config.bundlePath();
-        if (p != null && !p.trim().isEmpty()) return Paths.get(p.trim());
-        if (config.autoDetectDownloads()) return findNewestDownloadBundle();
-        return null;
-    }
-
-    /** Newest fate-locked-bundle-*.json in the user's Downloads folder, or null. */
-    private Path findNewestDownloadBundle()
-    {
-        File dir = new File(System.getProperty("user.home"), "Downloads");
-        File[] files = dir.listFiles((d, name) ->
+        File[] files = DATA_DIR.listFiles((d, name) ->
             name.startsWith("fate-locked-bundle") && name.toLowerCase().endsWith(".json"));
         if (files == null || files.length == 0) return null;
         File newest = null;
