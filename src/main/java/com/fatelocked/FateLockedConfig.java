@@ -33,11 +33,24 @@ public interface FateLockedConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "onlineSync",
+        name = "Enable online sync",
+        description = "Sync your run from the web app over the internet via a pairing code, instead of clipboard/files. Off by default; no network calls unless enabled.",
+        section = bundleSection,
+        position = 4,
+        warning = "This feature submits your IP address to a 3rd-party server not controlled or verified by Runelite developers"
+    )
+    default boolean onlineSync()
+    {
+        return false;
+    }
+
+    @ConfigItem(
         keyName = "syncCode",
         name = "Online sync code",
-        description = "Optional. Paste the pairing code from the web app's Online sync to pull your run over the internet (no clipboard/files). Blank = off.",
+        description = "Pairing code from the web app's Online sync (used only when 'Enable online sync' is on).",
         section = bundleSection,
-        position = 4
+        position = 5
     )
     default String syncCode()
     {
@@ -49,7 +62,7 @@ public interface FateLockedConfig extends Config
         name = "Relay URL",
         description = "Base URL of the online-sync relay. Change only if you host your own.",
         section = bundleSection,
-        position = 5
+        position = 6
     )
     default String relayUrl()
     {

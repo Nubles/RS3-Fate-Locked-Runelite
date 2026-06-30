@@ -287,9 +287,9 @@ public class FateLockedPlugin extends Plugin
         {
             refreshInfoBoxes();
         }
-        else if ("syncCode".equals(key) || "relayUrl".equals(key))
+        else if ("onlineSync".equals(key) || "syncCode".equals(key) || "relayUrl".equals(key))
         {
-            lastRelayVersion = null; // re-fetch from the new code/URL
+            lastRelayVersion = null; // re-fetch on the next poll with the new settings
         }
     }
 
@@ -992,6 +992,12 @@ public class FateLockedPlugin extends Plugin
 
     private void pollRelay()
     {
+        // Network consent gate: no relay request is made unless the user has
+        // explicitly enabled online sync (see FateLockedConfig.onlineSync, which
+        // carries the required IP-address warning). This is the single place that
+        // contacts the relay.
+        if (!config.onlineSync()) return;
+
         String code = config.syncCode();
         String base = config.relayUrl();
         if (code == null || code.trim().isEmpty() || base == null || base.trim().isEmpty()) return;
