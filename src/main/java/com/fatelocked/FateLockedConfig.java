@@ -53,7 +53,7 @@ public interface FateLockedConfig extends Config
     )
     default String relayUrl()
     {
-        return "https://fate-relay.alexanderhaynes18.workers.dev";
+        return "https://fate-relay.fatelocked.workers.dev";
     }
 
     @ConfigItem(
