@@ -41,6 +41,7 @@ missing fields degrade gracefully.
   "subAreaChunks": { "Falador":  [{ "cx": 46, "cy": 52 }] },
   "regionGroups":  { "Asgarnia": ["Falador", "Port Sarim"] },
   "unlockedRegions": ["Falador"],
+  "unlockedChunks": ["50,50", "50,51"],
   "state": {
     "keys": 3, "specialKeys": 0, "chaosKeys": 0,
     "fatePoints": 12, "activeBuff": "NONE", "pinnedGoals": [],
@@ -53,6 +54,12 @@ missing fields degrade gracefully.
 - `regionGroups` — hierarchy so the plugin can resolve continent unlocks the
   same way the app does (Misthalin + its starter areas are always free).
 - `unlockedRegions` — the sub-areas the player has unlocked.
+- `unlockedChunks` — Chunked-mode runs only, a different unlock model (one map
+  chunk at a time, not named areas). Its *presence* (not length) marks a
+  bundle as Chunked — an empty array is a valid, meaningful state (a fresh
+  Chunked run with nothing rolled yet, before the always-free start chunk).
+  When present, `FateLockedBundle.lockStateAt`/`isUnlocked` resolve purely
+  from raw chunk-coordinate membership instead of `unlockedRegions`.
 - `state` — live run stats for the HUD and side panel.
 - `state.linkedAccount` (v3) — the OSRS account the run is bound to, used for the
   HUD account line and the wrong-character warning. Omitted until the run is

@@ -32,6 +32,7 @@ import java.util.zip.GZIPInputStream;
  *   "subAreaChunks":  { "Falador":  [{"cx":46,"cy":52}], ... },   // named areas
  *   "regionGroups":   { "Asgarnia": ["Falador", "Port Sarim"], ... },
  *   "unlockedRegions": ["Falador", "Lumbridge"],
+ *   "unlockedChunks": ["50,50", "50,51"],   // Chunked mode only — see below
  *   "state": { "keys": 3, "specialKeys": 0, "chaosKeys": 0,
  *              "fatePoints": 12, "activeBuff": "NONE", "pinnedGoals": [],
  *              "linkedAccount": "Zezima" }   // v3: account the run is bound to
@@ -42,6 +43,19 @@ import java.util.zip.GZIPInputStream;
  * (e.g. Falador) is unlocked iff that sub-area is unlocked; chunks in unnamed
  * terrain fall back to their continent; Misthalin and its starter areas are
  * always unlocked.
+ *
+ * <p><b>Chunked mode</b> is a different unlock model entirely — one map-region
+ * chunk unlocked at a time, not whole named areas — so it carries its own
+ * field, {@code unlockedChunks}, instead of {@code unlockedRegions}. Its
+ * <em>presence</em> in the payload (not its length) is what marks a bundle as
+ * Chunked: a fresh Chunked run has zero chunks rolled yet, so the array is
+ * legitimately empty at the very start, and that must not be mistaken for
+ * "not a Chunked bundle" — the free start chunk (the Lumbridge castle
+ * courtyard, cx=50,cy=50, matching utils/chunkAdjacency.ts's CHUNKED_START on
+ * the web side) still needs to read as unlocked in-game from the first
+ * moment. When a bundle carries this field, {@link #lockStateAt} and
+ * {@link #isUnlocked} resolve purely from raw chunk-coordinate membership
+ * instead of named-region unlock state.
  */
 @Getter
 public class FateLockedBundle
@@ -61,6 +75,16 @@ public class FateLockedBundle
     private final Map<String, List<String>> regionGroups;
     /** Sub-area names the player has unlocked. */
     private final Set<String> unlockedRegions;
+    /**
+     * Chunked mode's raw unlock set — present (possibly empty) only when the
+     * bundle came from a Chunked-mode run; null for every other mode, which
+     * is how {@link #isChunkedBundle()} tells the two apart. Always includes
+     * {@link #CHUNKED_START}, mirroring the web app's always-free start chunk.
+     */
+    private final Set<CanonicalChunk> chunkedUnlockedSet;
+    /** The Lumbridge castle courtyard chunk — Chunked mode's fixed, always-free
+     *  starting point. Matches CHUNKED_START in utils/chunkAdjacency.ts. */
+    public static final CanonicalChunk CHUNKED_START = new CanonicalChunk(50, 50);
     /** Item-id (as string) → equipment tier, for the over-tier gear warning. v3+, optional. */
     private final Map<String, Integer> itemTiers;
     /** Normalised slayer task name → chunks its monster appears in (complete coverage). v3+, optional. */
@@ -102,6 +126,28 @@ public class FateLockedBundle
             ? Collections.<String, List<String>>emptyMap() : raw.regionGroups;
         this.unlockedRegions = raw == null || raw.unlockedRegions == null
             ? Collections.<String>emptySet() : new HashSet<>(raw.unlockedRegions);
+
+        // Chunked mode: unlockedChunks' mere presence (even as an empty list)
+        // marks this as a Chunked bundle — see the class javadoc. Offsets are
+        // applied the same way index() applies them to chunks/subAreaChunks,
+        // for consistency, even though current exports always use {0,0}.
+        if (raw != null && raw.unlockedChunks != null)
+        {
+            int offsetCx = raw.chunkOffset != null ? raw.chunkOffset.cx : 0;
+            int offsetCy = raw.chunkOffset != null ? raw.chunkOffset.cy : 0;
+            Set<CanonicalChunk> parsed = new HashSet<>();
+            parsed.add(CHUNKED_START);
+            for (String key : raw.unlockedChunks)
+            {
+                CanonicalChunk c = parseChunkKey(key);
+                if (c != null) parsed.add(new CanonicalChunk(c.getCx() - offsetCx, c.getCy() - offsetCy));
+            }
+            this.chunkedUnlockedSet = parsed;
+        }
+        else
+        {
+            this.chunkedUnlockedSet = null;
+        }
         this.chunkContent = raw == null || raw.chunkContent == null
             ? Collections.<String, Map<String, List<String>>>emptyMap() : raw.chunkContent;
         this.itemTiers = raw == null || raw.itemTiers == null
@@ -144,11 +190,23 @@ public class FateLockedBundle
         this.totalChunks = tc;
         this.unlockedChunks = uc;
 
-        Set<String> areas = subAreaChunks.isEmpty() ? regionChunks.keySet() : subAreaChunks.keySet();
-        int ua = 0;
-        for (String a : areas) if (isUnlocked(a)) ua++;
-        this.totalAreas = areas.size();
-        this.unlockedAreas = ua;
+        if (isChunkedBundle())
+        {
+            // Chunked mode doesn't unlock whole named areas at a time, so the
+            // "areas" concept doesn't apply the way it does for every other
+            // mode — alias it to the (already chunk-accurate) chunk counts
+            // rather than leaving it permanently 0/0 in the HUD.
+            this.totalAreas = tc;
+            this.unlockedAreas = uc;
+        }
+        else
+        {
+            Set<String> areas = subAreaChunks.isEmpty() ? regionChunks.keySet() : subAreaChunks.keySet();
+            int ua = 0;
+            for (String a : areas) if (isUnlocked(a)) ua++;
+            this.totalAreas = areas.size();
+            this.unlockedAreas = ua;
+        }
     }
 
     public static FateLockedBundle empty()
@@ -287,6 +345,22 @@ public class FateLockedBundle
     public boolean isUnlocked(String name)
     {
         if (name == null) return false;
+        if (isChunkedBundle())
+        {
+            // Chunked mode: a named area is "unlocked" if the player has a
+            // foothold in ANY of its chunks — quest/diary/resource data is
+            // authored in named areas, not raw coords, so this is the closest
+            // equivalent at that data granularity (mirrors
+            // isNamedAreaReachableViaChunks in utils/reachability.ts).
+            Set<CanonicalChunk> chunks = subAreaChunks.get(name);
+            if (chunks == null || chunks.isEmpty()) chunks = regionChunks.get(name);
+            if (chunks == null || chunks.isEmpty()) return false;
+            for (CanonicalChunk c : chunks)
+            {
+                if (chunkedUnlockedSet.contains(c)) return true;
+            }
+            return false;
+        }
         if (alwaysUnlocked.contains(name)) return true;
         if (unlockedRegions.contains(name)) return true;
         List<String> children = regionGroups.get(name);
@@ -301,14 +375,22 @@ public class FateLockedBundle
         return false;
     }
 
-    /** Lock state of a chunk: sub-area first, continent fallback. */
+    /**
+     * Lock state of a chunk. Chunked-mode bundles resolve this purely from raw
+     * chunk-coordinate membership; every other mode uses sub-area-first,
+     * continent-fallback named-region resolution.
+     */
     public LockState lockStateAt(CanonicalChunk chunk)
     {
         String sub = subAreaAt(chunk);
-        if (sub != null) return isUnlocked(sub) ? LockState.UNLOCKED : LockState.LOCKED;
         String region = regionAt(chunk);
-        if (region != null) return isUnlocked(region) ? LockState.UNLOCKED : LockState.LOCKED;
-        return LockState.UNAUTHORED;
+        if (sub == null && region == null) return LockState.UNAUTHORED;
+        if (isChunkedBundle())
+        {
+            return chunkedUnlockedSet.contains(chunk) ? LockState.UNLOCKED : LockState.LOCKED;
+        }
+        if (sub != null) return isUnlocked(sub) ? LockState.UNLOCKED : LockState.LOCKED;
+        return isUnlocked(region) ? LockState.UNLOCKED : LockState.LOCKED;
     }
 
     /**
@@ -363,6 +445,28 @@ public class FateLockedBundle
         return t.endsWith("s") ? t.substring(0, t.length() - 1) : t;
     }
 
+    /** Parse a "cx,cy" chunk key (as used in unlockedChunks/chunkContent); null if malformed. */
+    private static CanonicalChunk parseChunkKey(String key)
+    {
+        if (key == null) return null;
+        String[] parts = key.split(",");
+        if (parts.length != 2) return null;
+        try
+        {
+            return new CanonicalChunk(Integer.parseInt(parts[0].trim()), Integer.parseInt(parts[1].trim()));
+        }
+        catch (NumberFormatException ex)
+        {
+            return null;
+        }
+    }
+
+    /** Is this a Chunked-mode bundle? Determined by unlockedChunks' presence, not its length. */
+    public boolean isChunkedBundle()
+    {
+        return chunkedUnlockedSet != null;
+    }
+
     // ---- wire format ---------------------------------------------------------
 
     /** Live run stats included in v2+ bundles for the in-game HUD. */
@@ -391,6 +495,7 @@ public class FateLockedBundle
         Map<String, List<RawChunk>> subAreaChunks;
         Map<String, List<String>> regionGroups;
         List<String> unlockedRegions;
+        List<String> unlockedChunks;
         Map<String, Map<String, List<String>>> chunkContent;
         Map<String, Integer> itemTiers;
         Map<String, List<RawChunk>> slayerChunks;
