@@ -26,6 +26,8 @@ import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.WidgetLoaded;
+import net.runelite.client.events.LootReceived;
+import net.runelite.http.api.loottracker.LootRecordType;
 import net.runelite.client.Notifier;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.callback.ClientThread;
@@ -163,6 +165,15 @@ public class FateLockedPlugin extends Plugin
     private static final int QUEST_COMPLETED_GROUP_ID = 153;
     /** Crystal key — a gold-key item icon for the Keys infobox. */
     private static final int KEYS_ICON_ITEM = 989;
+    /**
+     * Minimum NPC combat level for a LootReceived kill to nudge a Boss-table
+     * roll. LootReceived fires for every NPC kill with personal loot (even a
+     * chicken), so this filters down to genuine bosses — most slayer-tier
+     * monsters and superiors sit well under 200, while true bosses (KBD 240,
+     * Vorkath 732, Zulrah 725, GWD generals 250-350, …) clear it comfortably.
+     * Approximate by design, same spirit as the plugin's other broad nudges.
+     */
+    private static final int BOSS_LOOT_COMBAT_LEVEL = 200;
     /** Plugin-specific data dir under .runelite/ — all file I/O is confined here. */
     private static final File DATA_DIR = new File(RuneLite.RUNELITE_DIR, "fate-locked");
 
@@ -399,6 +410,27 @@ public class FateLockedPlugin extends Plugin
         if (ev.getGroupId() == QUEST_COMPLETED_GROUP_ID)
         {
             nudge("Quest complete — may be worth a roll.");
+        }
+    }
+
+    /**
+     * Precise boss/raid kill detection — fires on the actual loot drop rather
+     * than inferring a kill from chunk content, so it's reliable even for
+     * bosses the chunk dataset doesn't cover. EVENT-type loot (CoX/ToB/ToA
+     * reward chests) always nudges; NPC-type loot only nudges above
+     * BOSS_LOOT_COMBAT_LEVEL so ordinary slayer kills don't spam chat.
+     */
+    @Subscribe
+    public void onLootReceived(LootReceived ev)
+    {
+        if (!config.rollNudges()) return;
+        if (ev.getType() == LootRecordType.EVENT)
+        {
+            nudge("Raid loot (" + ev.getName() + ") — may be worth a roll.");
+        }
+        else if (ev.getType() == LootRecordType.NPC && ev.getCombatLevel() >= BOSS_LOOT_COMBAT_LEVEL)
+        {
+            nudge("Boss kill (" + ev.getName() + ") — may be worth a roll.");
         }
     }
 
