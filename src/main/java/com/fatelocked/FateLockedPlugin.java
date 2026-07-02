@@ -206,6 +206,9 @@ public class FateLockedPlugin extends Plugin
     /** Assigned slayer monster from chat (matches both "to kill X;" and Konar's "in <area>"). */
     private static final Pattern SLAYER_TASK =
         Pattern.compile("to kill\\s+(?:the\\s+)?(.+?)(?:\\s+in\\s+|[;:.])", Pattern.CASE_INSENSITIVE);
+    /** The client's own broadcast on a new Collection Log entry: "New item added to your collection log: X". */
+    private static final Pattern COLLECTION_LOG_ITEM =
+        Pattern.compile("new item added to your collection log:\\s*(.+)", Pattern.CASE_INSENSITIVE);
     /** Current slayer task monster name (raw), or null. */
     private String slayerTask;
     /** The locked slayer task to show on the HUD, or null. */
@@ -356,6 +359,17 @@ public class FateLockedPlugin extends Plugin
         if (config.rollNudges() && m.contains("combat task:"))
         {
             nudge("Combat achievement complete — may be worth a roll.");
+        }
+
+        // The client itself broadcasts every new Collection Log entry on this
+        // exact line — no inference needed, just watch for it.
+        if (config.rollNudges() && m.contains("new item added to your collection log"))
+        {
+            Matcher mat = COLLECTION_LOG_ITEM.matcher(raw);
+            String item = mat.find() ? mat.group(1).trim() : null;
+            nudge(item != null
+                ? "Collection log: " + item + " — may be worth a roll."
+                : "Collection log entry added — may be worth a roll.");
         }
 
         // Slayer assignment / task-check messages mention the monster.

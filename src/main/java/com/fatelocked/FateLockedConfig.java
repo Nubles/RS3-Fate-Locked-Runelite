@@ -212,7 +212,7 @@ public interface FateLockedConfig extends Config
     @ConfigItem(
         keyName = "rollNudges",
         name = "Roll reminders",
-        description = "Chat reminder on level-up, quest, diary, combat-achievement, boss kill and raid completion that it may be worth a roll in the tracker",
+        description = "Chat reminder on level-up, quest, diary, combat-achievement, boss kill, raid and collection-log completion that it may be worth a roll in the tracker",
         section = warningsSection
     )
     default boolean rollNudges()
