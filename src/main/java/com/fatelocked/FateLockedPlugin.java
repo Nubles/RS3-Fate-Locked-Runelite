@@ -26,8 +26,7 @@ import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.WidgetLoaded;
-import net.runelite.client.events.LootReceived;
-import net.runelite.http.api.loottracker.LootRecordType;
+import net.runelite.client.plugins.loottracker.LootReceived;
 import net.runelite.client.Notifier;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.callback.ClientThread;
@@ -438,11 +437,15 @@ public class FateLockedPlugin extends Plugin
     public void onLootReceived(LootReceived ev)
     {
         if (!config.rollNudges()) return;
-        if (ev.getType() == LootRecordType.EVENT)
+        // Compare by enum name rather than importing LootRecordType directly —
+        // its package has moved between RuneLite versions; this is stable
+        // against that regardless of which one the Hub build resolves.
+        String type = ev.getType() == null ? "" : ev.getType().name();
+        if ("EVENT".equals(type))
         {
             nudge("Raid loot (" + ev.getName() + ") — may be worth a roll.");
         }
-        else if (ev.getType() == LootRecordType.NPC && ev.getCombatLevel() >= BOSS_LOOT_COMBAT_LEVEL)
+        else if ("NPC".equals(type) && ev.getCombatLevel() >= BOSS_LOOT_COMBAT_LEVEL)
         {
             nudge("Boss kill (" + ev.getName() + ") — may be worth a roll.");
         }
