@@ -116,6 +116,7 @@ public class FateLockedPlugin extends Plugin
 
     private ScheduledFuture<?> relayPollFuture;
     private volatile String lastRelayVersion;
+    private volatile String suggestToken; // write-token for /suggest, captured from the first successful POST
 
     /** Configurable hotkey: re-import the bundle from the clipboard. */
     private final HotkeyListener reimportHotkey = new HotkeyListener(() -> config.reimportHotkey())
@@ -208,6 +209,9 @@ public class FateLockedPlugin extends Plugin
     /** The client's own broadcast on a new Collection Log entry: "New item added to your collection log: X". */
     private static final Pattern COLLECTION_LOG_ITEM =
         Pattern.compile("new item added to your collection log:\\s*(.+)", Pattern.CASE_INSENSITIVE);
+    /** Reward-scroll text: quest name is embedded in the "Congratulations..." line. */
+    private static final Pattern QUEST_COMPLETE_TEXT =
+        Pattern.compile("completed (?:the |a )?(.+?) quest", Pattern.CASE_INSENSITIVE);
     /** Current slayer task monster name (raw), or null. */
     private String slayerTask;
     /** The locked slayer task to show on the HUD, or null. */
@@ -423,7 +427,28 @@ public class FateLockedPlugin extends Plugin
         if (ev.getGroupId() == QUEST_COMPLETED_GROUP_ID)
         {
             nudge("Quest complete — may be worth a roll.");
+            // Best-effort quest name for the relay suggestion; the reward
+            // scroll's text child varies by quest length, so this degrades to
+            // a generic label rather than failing if the layout doesn't match.
+            clientThread.invokeLater(() -> pushSuggestion("Quest", extractQuestName()));
         }
+    }
+
+    /** Reads the quest name off the reward scroll widget, or null if it can't be found. */
+    private String extractQuestName()
+    {
+        try
+        {
+            for (int child = 0; child < 10; child++)
+            {
+                net.runelite.api.widgets.Widget w = client.getWidget(QUEST_COMPLETED_GROUP_ID, child);
+                if (w == null || w.getText() == null) continue;
+                Matcher mat = QUEST_COMPLETE_TEXT.matcher(Text.removeTags(w.getText()));
+                if (mat.find()) return mat.group(1).trim();
+            }
+        }
+        catch (Exception ignored) { /* layout mismatch — fall back to generic label */ }
+        return null;
     }
 
     /**
@@ -1091,6 +1116,124 @@ public class FateLockedPlugin extends Plugin
                 }
             }
         });
+    }
+
+    // ── Roll suggestions (plugin → app) ─────────────────────────────────────
+    // Same opt-in relay session as the main sync, a separate sub-resource
+    // (/suggest) the plugin is sole writer to. The app never rolls on the
+    // player's behalf — it just surfaces "this may be worth a roll" with a
+    // link to the right tab, exactly like the in-client chat nudge, but
+    // visible even when the player isn't looking at chat. Read-modify-write
+    // against the KV-backed array; suggestions are infrequent enough (quest/
+    // diary/CA/boss completions) that the rare lost race under concurrent
+    // writes is an acceptable trade for not needing a server-side append op.
+
+    private static final class SuggestionDto
+    {
+        String source;
+        String label;
+        long ts;
+    }
+
+    /** Cap on suggestions kept in the relay array — oldest entries are dropped first. */
+    private static final int MAX_SUGGESTIONS = 20;
+
+    private void pushSuggestion(String source, String label)
+    {
+        if (!config.onlineSync()) return; // same consent gate as pollRelay
+        String code = config.syncCode();
+        String base = config.relayUrl();
+        if (code == null || code.trim().isEmpty() || base == null || base.trim().isEmpty()) return;
+
+        SuggestionDto item = new SuggestionDto();
+        item.source = source;
+        item.label = (label == null || label.trim().isEmpty()) ? source + " complete" : label.trim();
+        item.ts = System.currentTimeMillis();
+
+        String url;
+        try
+        {
+            url = base.trim().replaceAll("/+$", "") + "/r/" + code.trim() + "/suggest";
+        }
+        catch (IllegalArgumentException ex)
+        {
+            return; // malformed relay URL — ignore until corrected
+        }
+
+        Request getRequest = new Request.Builder().url(url).build();
+        okHttpClient.newCall(getRequest).enqueue(new Callback()
+        {
+            @Override
+            public void onFailure(Call call, IOException e)
+            {
+                log.debug("Suggestion GET failed: {}", e.getMessage());
+            }
+
+            @Override
+            public void onResponse(Call call, Response response)
+            {
+                List<SuggestionDto> items = new ArrayList<>();
+                try (Response r = response)
+                {
+                    if (r.isSuccessful() && r.body() != null)
+                    {
+                        RelayMessage msg = gson.fromJson(r.body().string(), RelayMessage.class);
+                        if (msg != null && msg.payload != null)
+                        {
+                            SuggestionDto[] existing = gson.fromJson(msg.payload, SuggestionDto[].class);
+                            if (existing != null) items.addAll(java.util.Arrays.asList(existing));
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    log.debug("Suggestion payload parse failed: {}", ex.getMessage());
+                }
+                items.add(item);
+                while (items.size() > MAX_SUGGESTIONS) items.remove(0);
+                postSuggestions(url, items);
+            }
+        });
+    }
+
+    private void postSuggestions(String url, List<SuggestionDto> items)
+    {
+        java.util.Map<String, Object> body = new HashMap<>();
+        if (suggestToken != null) body.put("token", suggestToken);
+        body.put("payload", gson.toJson(items));
+        okhttp3.RequestBody rb = okhttp3.RequestBody.create(
+            okhttp3.MediaType.parse("application/json"), gson.toJson(body));
+        Request request = new Request.Builder().url(url).post(rb).build();
+        okHttpClient.newCall(request).enqueue(new Callback()
+        {
+            @Override
+            public void onFailure(Call call, IOException e)
+            {
+                log.debug("Suggestion POST failed: {}", e.getMessage());
+            }
+
+            @Override
+            public void onResponse(Call call, Response response)
+            {
+                try (Response r = response)
+                {
+                    if (!r.isSuccessful() || r.body() == null) return;
+                    // The /suggest POST response is {version, token} (not RelayMessage's
+                    // version+payload shape) — parsed with its own tiny local type.
+                    TokenResponse tr = gson.fromJson(r.body().string(), TokenResponse.class);
+                    if (tr != null && tr.token != null) suggestToken = tr.token;
+                }
+                catch (Exception ex)
+                {
+                    log.debug("Suggestion POST response parse failed: {}", ex.getMessage());
+                }
+            }
+        });
+    }
+
+    private static final class TokenResponse
+    {
+        String token;
     }
 
     private static final class RelayMessage
