@@ -22,8 +22,13 @@ touch content you haven't unlocked yet.
   game view and tinted on the minimap with the same color coding.
 - **Locked-border highlight.** The edges of your current chunk that border a
   locked chunk are traced in red, so you see exactly which way not to go.
-- **Roll reminders.** A chat nudge on level-up, quest, achievement-diary and
-  combat-achievement completion that it may be worth a roll in the tracker.
+- **Roll reminders.** A chat nudge on level-up, quest, achievement-diary,
+  combat-achievement and collection-log completion — plus boss kills and raid
+  chests (via loot events) — that it may be worth a roll in the tracker.
+- **Roll suggestions in the web app.** With online sync on, quest completions
+  are also pushed to the tracker, where they appear as a toast and a
+  persistent list in the **Sync & Roll** tab with a *Take me there* jump to
+  the right roll — the plugin never rolls on your behalf.
 - **Over-tier gear warning.** Warns (chat + HUD) when you're wearing an item
   above your unlocked equipment tier for that slot.
 - **Locked slayer-task warning.** Warns (chat + HUD) when your assigned slayer

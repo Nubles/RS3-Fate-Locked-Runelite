@@ -102,6 +102,15 @@ a server.
   payload as the clipboard).
 - **Outbound-only:** no inbound socket/server (Hub rule). The relay default URL
   is `relayUrl` config (override to self-host).
+- **Roll suggestions (same consent gate):** when the plugin detects a
+  completion that may be worth a roll (currently quest completions), it also
+  writes a tiny `{source, label, ts}` suggestion to `POST /r/<code>/suggest` —
+  a sub-resource of the same relay session, shown by the web app as a
+  dismissible reminder. Both `pushSuggestion()` calls sit behind the same
+  `config.onlineSync()` early-return as `pollRelay()`; no suggestion request is
+  ever made without consent. The sub-resource's write-token is persisted in
+  plugin config (keyed per sync code) so a client restart doesn't orphan the
+  suggestion array until its TTL expires.
 - **Privacy:** the payload is chunk-unlock + run state — **no account
   credentials**. The relay stores it ephemerally (24h TTL), keyed by the random
   pairing code; only that code can read it, and a private write-token (held in
