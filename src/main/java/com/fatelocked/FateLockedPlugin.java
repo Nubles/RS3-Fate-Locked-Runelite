@@ -160,6 +160,14 @@ public class FateLockedPlugin extends Plugin
     };
     /** Last seen value per diary varbit; first observation per login is a baseline (no nudge). */
     private final Map<Integer, Integer> diaryState = new HashMap<>();
+    /** DIARY_VARBITS as a set, for the per-event filter in onVarbitChanged. */
+    private static final Set<Integer> DIARY_VARBIT_SET = new HashSet<>();
+    static
+    {
+        for (int id : DIARY_VARBITS) DIARY_VARBIT_SET.add(id);
+    }
+    /** Whether this login's diary baseline has been captured (see onVarbitChanged). */
+    private boolean diaryBaselined = false;
     /** Widget group shown when a quest is completed (the reward scroll). */
     private static final int QUEST_COMPLETED_GROUP_ID = 153;
     /** Crystal key — a gold-key item icon for the Keys infobox. */
@@ -327,6 +335,7 @@ public class FateLockedPlugin extends Plugin
             // here lets those re-establish the baseline without firing nudges.
             lastLevels.clear();
             diaryState.clear(); // re-baseline diaries this login (don't nudge already-done tiers)
+            diaryBaselined = false;
             warnedOverTier.clear(); // re-warn over-tier gear once per session
 
         }
@@ -490,15 +499,26 @@ public class FateLockedPlugin extends Plugin
     {
         if (!config.rollNudges()) return;
         // Reliable diary-tier detection: each varbit flips 0→1 when that tier is
-        // finished. The first value seen per login is a baseline (no nudge).
-        for (int id : DIARY_VARBITS)
+        // finished. VarbitChanged fires for EVERY varbit in the game — a very hot
+        // event — so the steady-state path is a set-lookup filter, not a scan.
+        // The one-time baseline still reads all 48: a tier varbit that's 0 at
+        // login never fires an event, so filtering alone would leave it with no
+        // baseline and its later completion would be missed. (The first event
+        // after LOGGED_IN arrives after the initial varp sync, so the values
+        // read here are the real ones, not pre-sync zeros.)
+        if (!diaryBaselined)
         {
-            int v = client.getVarbitValue(id);
-            Integer prev = diaryState.put(id, v);
-            if (prev != null && prev == 0 && v == 1)
-            {
-                nudge("Achievement diary tier complete — may be worth a roll.");
-            }
+            for (int id : DIARY_VARBITS) diaryState.put(id, client.getVarbitValue(id));
+            diaryBaselined = true;
+            return;
+        }
+        int id = ev.getVarbitId();
+        if (!DIARY_VARBIT_SET.contains(id)) return;
+        int v = ev.getValue();
+        Integer prev = diaryState.put(id, v);
+        if (prev != null && prev == 0 && v == 1)
+        {
+            nudge("Achievement diary tier complete — may be worth a roll.");
         }
     }
 
