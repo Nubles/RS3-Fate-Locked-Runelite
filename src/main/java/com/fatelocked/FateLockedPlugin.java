@@ -113,11 +113,10 @@ public class FateLockedPlugin extends Plugin
     @Inject private InfoBoxManager infoBoxManager;
     @Inject private KeyManager keyManager;
     @Inject private OkHttpClient okHttpClient;
+    @Inject private ConfigManager configManager;
 
     private ScheduledFuture<?> relayPollFuture;
     private volatile String lastRelayVersion;
-    private volatile String suggestToken; // write-token for /suggest, captured from the first successful POST
-
     /** Configurable hotkey: re-import the bundle from the clipboard. */
     private final HotkeyListener reimportHotkey = new HotkeyListener(() -> config.reimportHotkey())
     {
@@ -209,9 +208,16 @@ public class FateLockedPlugin extends Plugin
     /** The client's own broadcast on a new Collection Log entry: "New item added to your collection log: X". */
     private static final Pattern COLLECTION_LOG_ITEM =
         Pattern.compile("new item added to your collection log:\\s*(.+)", Pattern.CASE_INSENSITIVE);
-    /** Reward-scroll text: quest name is embedded in the "Congratulations..." line. */
-    private static final Pattern QUEST_COMPLETE_TEXT =
-        Pattern.compile("completed (?:the |a )?(.+?) quest", Pattern.CASE_INSENSITIVE);
+    /**
+     * Reward-scroll text. Most quests read "You have completed The Corsair
+     * Curse!" (no trailing "quest"); a few older ones read "...completed the
+     * Dragon Slayer quest". Try the suffixed form first so it doesn't leave
+     * a dangling "quest" in the captured name, then the bare form.
+     */
+    private static final Pattern QUEST_COMPLETE_SUFFIXED =
+        Pattern.compile("completed (?:the )?(.+?) quest[!.]?", Pattern.CASE_INSENSITIVE);
+    private static final Pattern QUEST_COMPLETE_BARE =
+        Pattern.compile("(?:you have |have )completed (.+?)[!.]", Pattern.CASE_INSENSITIVE);
     /** Current slayer task monster name (raw), or null. */
     private String slayerTask;
     /** The locked slayer task to show on the HUD, or null. */
@@ -443,7 +449,10 @@ public class FateLockedPlugin extends Plugin
             {
                 net.runelite.api.widgets.Widget w = client.getWidget(QUEST_COMPLETED_GROUP_ID, child);
                 if (w == null || w.getText() == null) continue;
-                Matcher mat = QUEST_COMPLETE_TEXT.matcher(Text.removeTags(w.getText()));
+                String text = Text.removeTags(w.getText());
+                Matcher mat = QUEST_COMPLETE_SUFFIXED.matcher(text);
+                if (mat.find()) return mat.group(1).trim();
+                mat = QUEST_COMPLETE_BARE.matcher(text);
                 if (mat.find()) return mat.group(1).trim();
             }
         }
@@ -1138,6 +1147,23 @@ public class FateLockedPlugin extends Plugin
     /** Cap on suggestions kept in the relay array — oldest entries are dropped first. */
     private static final int MAX_SUGGESTIONS = 20;
 
+    /**
+     * Write-token for the /suggest sub-resource. The relay's first-writer-claims
+     * model means losing this token after the first POST locks us out of our own
+     * suggestion array until the KV entry's 24h TTL expires — so it's persisted
+     * in plugin config (keyed per sync code, so re-pairing starts fresh) rather
+     * than held in memory where a client restart would drop it.
+     */
+    private String loadSuggestToken(String code)
+    {
+        return configManager.getConfiguration(FateLockedConfig.GROUP, "suggestToken." + code);
+    }
+
+    private void saveSuggestToken(String code, String token)
+    {
+        configManager.setConfiguration(FateLockedConfig.GROUP, "suggestToken." + code, token);
+    }
+
     private void pushSuggestion(String source, String label)
     {
         if (!config.onlineSync()) return; // same consent gate as pollRelay
@@ -1150,10 +1176,11 @@ public class FateLockedPlugin extends Plugin
         item.label = (label == null || label.trim().isEmpty()) ? source + " complete" : label.trim();
         item.ts = System.currentTimeMillis();
 
+        final String trimmedCode = code.trim();
         String url;
         try
         {
-            url = base.trim().replaceAll("/+$", "") + "/r/" + code.trim() + "/suggest";
+            url = base.trim().replaceAll("/+$", "") + "/r/" + trimmedCode + "/suggest";
         }
         catch (IllegalArgumentException ex)
         {
@@ -1191,14 +1218,15 @@ public class FateLockedPlugin extends Plugin
                 }
                 items.add(item);
                 while (items.size() > MAX_SUGGESTIONS) items.remove(0);
-                postSuggestions(url, items);
+                postSuggestions(url, trimmedCode, items);
             }
         });
     }
 
-    private void postSuggestions(String url, List<SuggestionDto> items)
+    private void postSuggestions(String url, String code, List<SuggestionDto> items)
     {
         java.util.Map<String, Object> body = new HashMap<>();
+        String suggestToken = loadSuggestToken(code);
         if (suggestToken != null) body.put("token", suggestToken);
         body.put("payload", gson.toJson(items));
         okhttp3.RequestBody rb = okhttp3.RequestBody.create(
@@ -1221,7 +1249,7 @@ public class FateLockedPlugin extends Plugin
                     // The /suggest POST response is {version, token} (not RelayMessage's
                     // version+payload shape) — parsed with its own tiny local type.
                     TokenResponse tr = gson.fromJson(r.body().string(), TokenResponse.class);
-                    if (tr != null && tr.token != null) suggestToken = tr.token;
+                    if (tr != null && tr.token != null) saveSuggestToken(code, tr.token);
                 }
                 catch (Exception ex)
                 {
