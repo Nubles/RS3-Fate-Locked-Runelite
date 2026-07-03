@@ -125,7 +125,17 @@ public class FateLockedWorldMapOverlay extends Overlay
 
         String status = bundle.lockStateAt(hovered) == FateLockedBundle.LockState.UNLOCKED
             ? "<col=2ee59d>Unlocked</col>" : "<col=ef4444>Locked</col>";
-        tooltipManager.add(new Tooltip(label + "</br>" + status));
+        StringBuilder tip = new StringBuilder(label).append("</br>").append(status);
+        if (config.worldMapTooltipContent())
+        {
+            // Per-chunk "what's here" from the app's chunk-content dataset —
+            // capped per category so dense chunks stay a tooltip, not a page.
+            for (String line : bundle.contentAt(hovered, 4))
+            {
+                tip.append("</br><col=a8a8a8>").append(line).append("</col>");
+            }
+        }
+        tooltipManager.add(new Tooltip(tip.toString()));
     }
 
     /**

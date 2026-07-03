@@ -123,7 +123,5 @@ a server.
 ## Ideas / future work
 
 - Auto-log rolls from in-game item drops into the tracker's history.
-- Per-chunk "what's here" tooltip on the world map, fed by the app's
-  chunk-content dataset.
 - Emit a hash-chained audit log of chunk transitions + events so the web app's
   integrity layer can be verified against actual gameplay.

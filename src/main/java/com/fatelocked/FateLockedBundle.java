@@ -317,13 +317,30 @@ public class FateLockedBundle
      */
     public List<String> contentAt(CanonicalChunk chunk)
     {
+        return contentAt(chunk, Integer.MAX_VALUE);
+    }
+
+    /** contentAt with each category capped at maxPerCat names ("…, +N more") —
+     *  for the world-map hover tooltip, where a stacked dungeon chunk could
+     *  otherwise list dozens of monsters. */
+    public List<String> contentAt(CanonicalChunk chunk, int maxPerCat)
+    {
         Map<String, List<String>> e = chunkContent.get(chunk.getCx() + "," + chunk.getCy());
         if (e == null || e.isEmpty()) return Collections.<String>emptyList();
         List<String> out = new ArrayList<>();
         for (String[] cat : CONTENT_CATS)
         {
             List<String> v = e.get(cat[0]);
-            if (v != null && !v.isEmpty()) out.add(cat[1] + ": " + String.join(", ", v));
+            if (v == null || v.isEmpty()) continue;
+            if (v.size() <= maxPerCat)
+            {
+                out.add(cat[1] + ": " + String.join(", ", v));
+            }
+            else
+            {
+                out.add(cat[1] + ": " + String.join(", ", v.subList(0, maxPerCat))
+                    + ", +" + (v.size() - maxPerCat) + " more");
+            }
         }
         return out;
     }

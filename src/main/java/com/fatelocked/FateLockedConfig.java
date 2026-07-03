@@ -305,6 +305,17 @@ public interface FateLockedConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "worldMapTooltipContent",
+        name = "Tooltip: what's in the chunk",
+        description = "Also list the chunk's monsters, shops, farming patches and points of interest in the hover tooltip (from the app's chunk-content dataset)",
+        section = renderingSection
+    )
+    default boolean worldMapTooltipContent()
+    {
+        return true;
+    }
+
+    @ConfigItem(
         keyName = "unlockedColor",
         name = "Unlocked color",
         description = "Color for chunks inside unlocked regions",
