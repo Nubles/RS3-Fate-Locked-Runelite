@@ -228,7 +228,7 @@ public class FateLockedPlugin extends Plugin
         Pattern.compile("new item added to your collection log:\\s*(.+)", Pattern.CASE_INSENSITIVE);
     /** CA completion broadcast: the task name follows "combat task:". */
     private static final Pattern COMBAT_TASK =
-        Pattern.compile("combat task:\s*(.+?)\.?$", Pattern.CASE_INSENSITIVE);
+        Pattern.compile("combat task:\\s*(.+?)\\.?$", Pattern.CASE_INSENSITIVE);
     /**
      * Reward-scroll text. Most quests read "You have completed The Corsair
      * Curse!" (no trailing "quest"); a few older ones read "...completed the
