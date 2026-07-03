@@ -1125,12 +1125,13 @@ public class FateLockedPlugin extends Plugin
         String code = config.syncCode();
         String base = config.relayUrl();
         if (code == null || code.trim().isEmpty() || base == null || base.trim().isEmpty()) return;
+        final String trimmedCode = code.trim();
 
         final Request request;
         try
         {
             Request.Builder rb = new Request.Builder()
-                .url(base.trim().replaceAll("/+$", "") + "/r/" + code.trim());
+                .url(base.trim().replaceAll("/+$", "") + "/r/" + trimmedCode);
             if (lastRelayVersion != null) rb.header("If-None-Match", lastRelayVersion);
             request = rb.build();
         }
@@ -1159,6 +1160,10 @@ public class FateLockedPlugin extends Plugin
                     lastRelayVersion = etag != null ? etag : String.valueOf(msg.version);
                     String payload = msg.payload;
                     clientThread.invoke(() -> applyPastedBundle(payload));
+                    // Heartbeat for the web app's onboarding: a tiny {ts, version}
+                    // ack on /state proves the pairing works end-to-end. Same
+                    // consent gate as this poll (we're inside it), same relay.
+                    postStateAck(trimmedCode, msg.version);
                 }
                 catch (Exception ex)
                 {
@@ -1189,20 +1194,64 @@ public class FateLockedPlugin extends Plugin
     private static final int MAX_SUGGESTIONS = 20;
 
     /**
-     * Write-token for the /suggest sub-resource. The relay's first-writer-claims
-     * model means losing this token after the first POST locks us out of our own
-     * suggestion array until the KV entry's 24h TTL expires — so it's persisted
-     * in plugin config (keyed per sync code, so re-pairing starts fresh) rather
-     * than held in memory where a client restart would drop it.
+     * Write-tokens for the relay's writable sub-resources (/suggest, /state).
+     * The relay's first-writer-claims model means losing a token after the
+     * first POST locks us out of that sub-resource until its 24h TTL expires —
+     * so they're persisted in plugin config (keyed per sync code, so
+     * re-pairing starts fresh) rather than held in memory where a client
+     * restart would drop them.
      */
-    private String loadSuggestToken(String code)
+    private String loadRelayToken(String prefix, String code)
     {
-        return configManager.getConfiguration(FateLockedConfig.GROUP, "suggestToken." + code);
+        return configManager.getConfiguration(FateLockedConfig.GROUP, prefix + "." + code);
     }
 
-    private void saveSuggestToken(String code, String token)
+    private void saveRelayToken(String prefix, String code, String token)
     {
-        configManager.setConfiguration(FateLockedConfig.GROUP, "suggestToken." + code, token);
+        configManager.setConfiguration(FateLockedConfig.GROUP, prefix + "." + code, token);
+    }
+
+    /** POST {ts, version} to /r/:code/state after a successful relay import —
+     *  the web app polls this to show "plugin connected" during onboarding.
+     *  Only reachable from pollRelay, i.e. behind the onlineSync consent gate. */
+    private void postStateAck(String code, int version)
+    {
+        String base = config.relayUrl();
+        if (base == null || base.trim().isEmpty()) return;
+        String url = base.trim().replaceAll("/+$", "") + "/r/" + code + "/state";
+
+        java.util.Map<String, Object> ack = new HashMap<>();
+        ack.put("ts", System.currentTimeMillis());
+        ack.put("version", version);
+        java.util.Map<String, Object> body = new HashMap<>();
+        String token = loadRelayToken("stateToken", code);
+        if (token != null) body.put("token", token);
+        body.put("payload", gson.toJson(ack));
+        okhttp3.RequestBody rb = okhttp3.RequestBody.create(
+            okhttp3.MediaType.parse("application/json"), gson.toJson(body));
+        okHttpClient.newCall(new Request.Builder().url(url).post(rb).build()).enqueue(new Callback()
+        {
+            @Override
+            public void onFailure(Call call, IOException e)
+            {
+                log.debug("State ack failed: {}", e.getMessage());
+            }
+
+            @Override
+            public void onResponse(Call call, Response response)
+            {
+                try (Response r = response)
+                {
+                    if (!r.isSuccessful() || r.body() == null) return;
+                    TokenResponse tr = gson.fromJson(r.body().string(), TokenResponse.class);
+                    if (tr != null && tr.token != null) saveRelayToken("stateToken", code, tr.token);
+                }
+                catch (Exception ex)
+                {
+                    log.debug("State ack response parse failed: {}", ex.getMessage());
+                }
+            }
+        });
     }
 
     private void pushSuggestion(String source, String label)
@@ -1267,7 +1316,7 @@ public class FateLockedPlugin extends Plugin
     private void postSuggestions(String url, String code, List<SuggestionDto> items)
     {
         java.util.Map<String, Object> body = new HashMap<>();
-        String suggestToken = loadSuggestToken(code);
+        String suggestToken = loadRelayToken("suggestToken", code);
         if (suggestToken != null) body.put("token", suggestToken);
         body.put("payload", gson.toJson(items));
         okhttp3.RequestBody rb = okhttp3.RequestBody.create(
@@ -1290,7 +1339,7 @@ public class FateLockedPlugin extends Plugin
                     // The /suggest POST response is {version, token} (not RelayMessage's
                     // version+payload shape) — parsed with its own tiny local type.
                     TokenResponse tr = gson.fromJson(r.body().string(), TokenResponse.class);
-                    if (tr != null && tr.token != null) saveSuggestToken(code, tr.token);
+                    if (tr != null && tr.token != null) saveRelayToken("suggestToken", code, tr.token);
                 }
                 catch (Exception ex)
                 {
