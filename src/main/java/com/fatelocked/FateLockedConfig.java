@@ -327,6 +327,17 @@ public interface FateLockedConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "frontierColor",
+        name = "Frontier color (Chunked)",
+        description = "Chunked mode: color for rollable frontier chunks — locked chunks adjacent to one you hold",
+        section = renderingSection
+    )
+    default Color frontierColor()
+    {
+        return new Color(245, 158, 11, 100);
+    }
+
+    @ConfigItem(
         keyName = "lockedColor",
         name = "Locked color",
         description = "Color for chunks inside authored-but-not-yet-unlocked regions",

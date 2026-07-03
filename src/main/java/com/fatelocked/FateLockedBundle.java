@@ -479,6 +479,23 @@ public class FateLockedBundle
     }
 
     /** Is this a Chunked-mode bundle? Determined by unlockedChunks' presence, not its length. */
+    /**
+     * Chunked mode's frontier: this (authored) chunk is locked but orthogonally
+     * adjacent to an unlocked chunk — i.e. it's one of the chunks the next roll
+     * could land on. Mirrors utils/chunkAdjacency.ts isFrontierChunk. Always
+     * false outside Chunked bundles. Callers pass authored chunks (the overlay
+     * only iterates the authored grid), so authored-ness isn't re-checked.
+     */
+    public boolean isFrontierChunk(CanonicalChunk chunk)
+    {
+        if (!isChunkedBundle()) return false;
+        if (chunkedUnlockedSet.contains(chunk)) return false;
+        return chunkedUnlockedSet.contains(new CanonicalChunk(chunk.getCx() + 1, chunk.getCy()))
+            || chunkedUnlockedSet.contains(new CanonicalChunk(chunk.getCx() - 1, chunk.getCy()))
+            || chunkedUnlockedSet.contains(new CanonicalChunk(chunk.getCx(), chunk.getCy() + 1))
+            || chunkedUnlockedSet.contains(new CanonicalChunk(chunk.getCx(), chunk.getCy() - 1));
+    }
+
     public boolean isChunkedBundle()
     {
         return chunkedUnlockedSet != null;

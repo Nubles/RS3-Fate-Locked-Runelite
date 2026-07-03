@@ -82,7 +82,8 @@ public class FateLockedWorldMapOverlay extends Overlay
                 // Sub-area-aware per-chunk colouring (Falador vs the rest of
                 // Asgarnia), matching the web app's map exactly.
                 Color fill = bundle.lockStateAt(chunk) == FateLockedBundle.LockState.UNLOCKED
-                    ? config.unlockedColor() : config.lockedColor();
+                    ? config.unlockedColor()
+                    : bundle.isFrontierChunk(chunk) ? config.frontierColor() : config.lockedColor();
                 Rectangle2D rect = worldMapRectForChunk(chunk, bounds, ro);
                 if (rect == null) continue;
                 if (!clip.intersects(rect)) continue;
@@ -124,7 +125,9 @@ public class FateLockedWorldMapOverlay extends Overlay
         if (label == null) return; // unauthored — nothing to say
 
         String status = bundle.lockStateAt(hovered) == FateLockedBundle.LockState.UNLOCKED
-            ? "<col=2ee59d>Unlocked</col>" : "<col=ef4444>Locked</col>";
+            ? "<col=2ee59d>Unlocked</col>"
+            : bundle.isFrontierChunk(hovered)
+                ? "<col=f59e0b>Locked — rollable next</col>" : "<col=ef4444>Locked</col>";
         StringBuilder tip = new StringBuilder(label).append("</br>").append(status);
         if (config.worldMapTooltipContent())
         {

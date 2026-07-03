@@ -17,7 +17,8 @@ touch content you haven't unlocked yet.
 - **World map overlay.** Every authored chunk tinted green (unlocked) or red
   (locked), per chunk, on the full world map — hover any authored chunk to see
   its area name, lock status, and what's inside it (monsters, shops, farming
-  patches, points of interest). Optional click-to-jump markers pin every area
+  patches, points of interest). Chunked-mode runs also tint the rollable
+  frontier (locked chunks bordering one you hold) amber. Optional click-to-jump markers pin every area
   you haven't unlocked yet.
 - **Scene + minimap overlays.** The 64×64 chunk you're in is outlined in the
   game view and tinted on the minimap with the same color coding.
