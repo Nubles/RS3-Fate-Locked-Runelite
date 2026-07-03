@@ -160,11 +160,21 @@ public class FateLockedPlugin extends Plugin
     };
     /** Last seen value per diary varbit; first observation per login is a baseline (no nudge). */
     private final Map<Integer, Integer> diaryState = new HashMap<>();
-    /** DIARY_VARBITS as a set, for the per-event filter in onVarbitChanged. */
-    private static final Set<Integer> DIARY_VARBIT_SET = new HashSet<>();
+    /** Diary region names, in DIARY_VARBITS order (4 tiers per region). */
+    private static final String[] DIARY_REGIONS = {
+        "Ardougne", "Desert", "Falador", "Fremennik", "Kandarin", "Karamja",
+        "Kourend & Kebos", "Lumbridge & Draynor", "Morytania", "Varrock",
+        "Western Provinces", "Wilderness",
+    };
+    private static final String[] DIARY_TIERS = { "Easy", "Medium", "Hard", "Elite" };
+    /** Varbit id → "Ardougne Elite"-style name; key set doubles as the per-event filter. */
+    private static final Map<Integer, String> DIARY_VARBIT_NAMES = new HashMap<>();
     static
     {
-        for (int id : DIARY_VARBITS) DIARY_VARBIT_SET.add(id);
+        for (int i = 0; i < DIARY_VARBITS.length; i++)
+        {
+            DIARY_VARBIT_NAMES.put(DIARY_VARBITS[i], DIARY_REGIONS[i / 4] + " " + DIARY_TIERS[i % 4]);
+        }
     }
     /** Whether this login's diary baseline has been captured (see onVarbitChanged). */
     private boolean diaryBaselined = false;
@@ -216,6 +226,9 @@ public class FateLockedPlugin extends Plugin
     /** The client's own broadcast on a new Collection Log entry: "New item added to your collection log: X". */
     private static final Pattern COLLECTION_LOG_ITEM =
         Pattern.compile("new item added to your collection log:\\s*(.+)", Pattern.CASE_INSENSITIVE);
+    /** CA completion broadcast: the task name follows "combat task:". */
+    private static final Pattern COMBAT_TASK =
+        Pattern.compile("combat task:\s*(.+?)\.?$", Pattern.CASE_INSENSITIVE);
     /**
      * Reward-scroll text. Most quests read "You have completed The Corsair
      * Curse!" (no trailing "quest"); a few older ones read "...completed the
@@ -376,7 +389,13 @@ public class FateLockedPlugin extends Plugin
         // (onVarbitChanged), quests via the reward widget — both more reliable.
         if (config.rollNudges() && m.contains("combat task:"))
         {
-            nudge("Combat achievement complete — may be worth a roll.");
+            // "Congratulations, you've completed a hard combat task: <col=..>X</col>."
+            Matcher mat = COMBAT_TASK.matcher(Text.removeTags(raw));
+            String task = mat.find() ? mat.group(1).trim() : null;
+            nudge(task != null
+                ? "Combat achievement: " + task + " — may be worth a roll."
+                : "Combat achievement complete — may be worth a roll.");
+            pushSuggestion("Combat Achievement", task);
         }
 
         // The client itself broadcasts every new Collection Log entry on this
@@ -513,12 +532,14 @@ public class FateLockedPlugin extends Plugin
             return;
         }
         int id = ev.getVarbitId();
-        if (!DIARY_VARBIT_SET.contains(id)) return;
+        String name = DIARY_VARBIT_NAMES.get(id);
+        if (name == null) return;
         int v = ev.getValue();
         Integer prev = diaryState.put(id, v);
         if (prev != null && prev == 0 && v == 1)
         {
-            nudge("Achievement diary tier complete — may be worth a roll.");
+            nudge("Diary complete: " + name + " — may be worth a roll.");
+            pushSuggestion("Diary", name);
         }
     }
 

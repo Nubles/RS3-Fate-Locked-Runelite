@@ -103,7 +103,8 @@ a server.
 - **Outbound-only:** no inbound socket/server (Hub rule). The relay default URL
   is `relayUrl` config (override to self-host).
 - **Roll suggestions (same consent gate):** when the plugin detects a
-  completion that may be worth a roll (currently quest completions), it also
+  completion that may be worth a roll (quest, diary-tier and
+  combat-achievement completions), it also
   writes a tiny `{source, label, ts}` suggestion to `POST /r/<code>/suggest` —
   a sub-resource of the same relay session, shown by the web app as a
   dismissible reminder. Both `pushSuggestion()` calls sit behind the same

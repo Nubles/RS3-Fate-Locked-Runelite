@@ -25,8 +25,8 @@ touch content you haven't unlocked yet.
 - **Roll reminders.** A chat nudge on level-up, quest, achievement-diary,
   combat-achievement and collection-log completion — plus boss kills and raid
   chests (via loot events) — that it may be worth a roll in the tracker.
-- **Roll suggestions in the web app.** With online sync on, quest completions
-  are also pushed to the tracker, where they appear as a toast and a
+- **Roll suggestions in the web app.** With online sync on, quest, diary and
+  combat-achievement completions are also pushed to the tracker, where they appear as a toast and a
   persistent list in the **Sync & Roll** tab with a *Take me there* jump to
   the right roll — the plugin never rolls on your behalf.
 - **Over-tier gear warning.** Warns (chat + HUD) when you're wearing an item
