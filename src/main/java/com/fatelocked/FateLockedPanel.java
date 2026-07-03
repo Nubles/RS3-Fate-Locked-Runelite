@@ -63,6 +63,11 @@ class FateLockedPanel extends PluginPanel
     private final JLabel unknownNote = value();
 
     private final JTextArea pasteArea = new JTextArea(6, 10);
+    /** Last import outcome ("imported 12 regions" / "clipboard empty"), colored by result. */
+    private final JLabel importVal = value();
+    /** The LOAD BUNDLE body — auto-collapsed after a successful import. */
+    private JPanel bundleBody;
+    private JButton bundleHeader;
 
     private Consumer<String> onImport = j -> {};
     private Runnable onReload = () -> {};
@@ -81,15 +86,15 @@ class FateLockedPanel extends PluginPanel
         col.add(Box.createVerticalStrut(6));
 
         JButton trackerBtn = new JButton("Open web tracker");
-        trackerBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        fullWidth(trackerBtn);
         trackerBtn.setToolTipText("Open the Fate Locked Ironman tracker in your browser");
         trackerBtn.addActionListener(e -> LinkBrowser.browse(TRACKER_URL));
         col.add(trackerBtn);
         col.add(Box.createVerticalStrut(10));
 
         col.add(section("RUN"));
-        col.add(stats(new String[]{ "Profile", "Account", "Run ID", "Keys", "Fate", "Buff", "Goal" },
-            new JLabel[]{ profileVal, accountVal, runIdVal, keysVal, fateVal, buffVal, goalVal }));
+        col.add(stats(new String[]{ "Profile", "Account", "Run ID", "Keys", "Fate", "Buff", "Goal", "Import" },
+            new JLabel[]{ profileVal, accountVal, runIdVal, keysVal, fateVal, buffVal, goalVal, importVal }));
         col.add(Box.createVerticalStrut(12));
 
         col.add(section("CURRENT LOCATION"));
@@ -100,31 +105,38 @@ class FateLockedPanel extends PluginPanel
         col.add(wrap(hereList));
         col.add(Box.createVerticalStrut(12));
 
-        col.add(allowedHead);
-        col.add(wrap(allowedList));
-        col.add(Box.createVerticalStrut(8));
-        col.add(forbiddenHead);
-        col.add(wrap(forbiddenList));
-        col.add(Box.createVerticalStrut(8));
-        col.add(unknownHead);
+        JPanel breakdownBody = column();
+        breakdownBody.add(allowedHead);
+        breakdownBody.add(wrap(allowedList));
+        breakdownBody.add(Box.createVerticalStrut(8));
+        breakdownBody.add(forbiddenHead);
+        breakdownBody.add(wrap(forbiddenList));
+        breakdownBody.add(Box.createVerticalStrut(8));
+        breakdownBody.add(unknownHead);
         unknownNote.setAlignmentX(Component.LEFT_ALIGNMENT);
-        col.add(unknownNote);
+        breakdownBody.add(unknownNote);
+        col.add(collapsibleHeader("AREA BREAKDOWN", breakdownBody, true));
+        col.add(breakdownBody);
         col.add(Box.createVerticalStrut(12));
 
-        col.add(section("LOAD BUNDLE"));
-        col.add(Box.createVerticalStrut(4));
+        bundleBody = column();
+        bundleHeader = collapsibleHeader("LOAD BUNDLE", bundleBody, true);
+        col.add(bundleHeader);
+        col.add(bundleBody);
+
+        bundleBody.add(Box.createVerticalStrut(4));
 
         // Primary path: the web app's RL button puts the bundle on the clipboard,
         // so a single click here imports it — no file, no pasting.
         JButton clipboardBtn = new JButton("Import from clipboard");
-        clipboardBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        fullWidth(clipboardBtn);
         clipboardBtn.setToolTipText("Click RL in the web app, then click here");
         clipboardBtn.addActionListener(e -> importFromClipboard());
-        col.add(clipboardBtn);
-        col.add(Box.createVerticalStrut(6));
+        bundleBody.add(clipboardBtn);
+        bundleBody.add(Box.createVerticalStrut(6));
 
         JLabel pasteHint = section("…OR PASTE JSON");
-        col.add(pasteHint);
+        bundleBody.add(pasteHint);
 
         pasteArea.setLineWrap(true);
         pasteArea.setBackground(ColorScheme.DARKER_GRAY_COLOR);
@@ -135,22 +147,22 @@ class FateLockedPanel extends PluginPanel
         JScrollPane scroll = new JScrollPane(pasteArea);
         scroll.setAlignmentX(Component.LEFT_ALIGNMENT);
         scroll.setMaximumSize(new Dimension(Integer.MAX_VALUE, 110));
-        col.add(scroll);
-        col.add(Box.createVerticalStrut(6));
+        bundleBody.add(scroll);
+        bundleBody.add(Box.createVerticalStrut(6));
 
         JButton importBtn = new JButton("Import pasted JSON");
-        importBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        fullWidth(importBtn);
         importBtn.addActionListener(e -> {
             String txt = pasteArea.getText().trim();
             if (!txt.isEmpty()) onImport.accept(txt);
         });
-        col.add(importBtn);
-        col.add(Box.createVerticalStrut(4));
+        bundleBody.add(importBtn);
+        bundleBody.add(Box.createVerticalStrut(4));
 
         JButton reloadBtn = new JButton("Reload from file");
-        reloadBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
+        fullWidth(reloadBtn);
         reloadBtn.addActionListener(e -> onReload.run());
-        col.add(reloadBtn);
+        bundleBody.add(reloadBtn);
 
         add(col, BorderLayout.NORTH);
     }
@@ -278,12 +290,22 @@ class FateLockedPanel extends PluginPanel
         });
     }
 
-    /** Show a one-off message in the run-id row (e.g. import success/failure). */
+    /**
+     * Show the latest import outcome in its own row (the old behavior hijacked
+     * the Run ID row and left its color stuck red/green forever). A successful
+     * import also collapses the LOAD BUNDLE section — once a bundle is in,
+     * the paste box is dead weight until the player wants it again.
+     */
     void flashStatus(String message, boolean ok)
     {
         SwingUtilities.invokeLater(() -> {
-            runIdVal.setText(message);
-            runIdVal.setForeground(ok ? GREEN : RED);
+            importVal.setText(message);
+            importVal.setForeground(ok ? GREEN : RED);
+            if (ok && bundleBody.isVisible())
+            {
+                bundleBody.setVisible(false);
+                bundleHeader.setText(headerText("LOAD BUNDLE", false));
+            }
         });
     }
 
@@ -306,6 +328,49 @@ class FateLockedPanel extends PluginPanel
         l.setBorder(new EmptyBorder(0, 0, 4, 0));
         l.setAlignmentX(Component.LEFT_ALIGNMENT);
         return l;
+    }
+
+    /** Vertical sub-panel matching the main column's look. */
+    private static JPanel column()
+    {
+        JPanel p = new JPanel();
+        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
+        p.setBackground(ColorScheme.DARK_GRAY_COLOR);
+        p.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return p;
+    }
+
+    private static String headerText(String label, boolean open)
+    {
+        return (open ? "▾ " : "▸ ") + label;
+    }
+
+    /** Section header that toggles a body panel's visibility. */
+    private static JButton collapsibleHeader(String label, JPanel body, boolean open)
+    {
+        JButton h = new JButton(headerText(label, open));
+        h.setFont(h.getFont().deriveFont(Font.BOLD, 10f));
+        h.setForeground(Color.GRAY);
+        h.setContentAreaFilled(false);
+        h.setBorder(new EmptyBorder(0, 0, 4, 0));
+        h.setFocusPainted(false);
+        h.setHorizontalAlignment(JButton.LEFT);
+        h.setAlignmentX(Component.LEFT_ALIGNMENT);
+        h.setCursor(java.awt.Cursor.getPredefinedCursor(java.awt.Cursor.HAND_CURSOR));
+        body.setVisible(open);
+        h.addActionListener(e -> {
+            boolean nowOpen = !body.isVisible();
+            body.setVisible(nowOpen);
+            h.setText(headerText(label, nowOpen));
+            body.revalidate();
+        });
+        return h;
+    }
+
+    private static void fullWidth(JButton b)
+    {
+        b.setAlignmentX(Component.LEFT_ALIGNMENT);
+        b.setMaximumSize(new Dimension(Integer.MAX_VALUE, b.getPreferredSize().height));
     }
 
     private static JLabel value()
