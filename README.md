@@ -11,6 +11,10 @@ touch content you haven't unlocked yet.
 - **In-game HUD.** Always-visible overlay with your keys (standard · Omni ·
   Chaos), fate points, active ritual buff, first pinned goal, and the chunk
   you're standing in with its lock status.
+- **"In this chunk" box (optional).** A draggable overlay listing the
+  current chunk’s monsters, shops, farming patches and points of interest —
+  the same content the web app’s map chunk-info panel shows, in-world. Off
+  by default; enable it in the plugin config.
 - **Sub-area-aware lock state.** A Falador chunk reflects *Falador's* unlock —
   not all of Asgarnia's. Mirrors the web app's map exactly, including
   always-free Misthalin.

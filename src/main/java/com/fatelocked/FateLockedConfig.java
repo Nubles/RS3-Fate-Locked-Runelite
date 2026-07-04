@@ -166,6 +166,17 @@ public interface FateLockedConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "showChunkContentBox",
+        name = "Show \"in this chunk\" box",
+        description = "Draggable overlay listing the current chunk's monsters, shops, farming patches and points of interest — the same content the app's map chunk-info panel shows. Off by default; drag it anywhere.",
+        section = warningsSection
+    )
+    default boolean showChunkContentBox()
+    {
+        return false;
+    }
+
+    @ConfigItem(
         keyName = "useNotifier",
         name = "Send RuneLite notifications",
         description = "Also fire a RuneLite notification (tray / sound, per your global settings) for locked-chunk entry, locked slayer tasks, over-tier gear and wrong-account logins",

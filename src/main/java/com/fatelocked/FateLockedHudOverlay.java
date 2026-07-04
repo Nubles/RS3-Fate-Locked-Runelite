@@ -51,6 +51,9 @@ public class FateLockedHudOverlay extends OverlayPanel
         FateLockedBundle bundle = plugin.getBundle();
         FateLockedBundle.RunState state = bundle.getState();
 
+        // Fixed width so long area names ("Draynor Village · Misthalin") sit on
+        // one line instead of wrapping to three.
+        panelComponent.setPreferredSize(new Dimension(165, 0));
         panelComponent.getChildren().add(TitleComponent.builder()
             .text("Fate Locked")
             .color(GOLD)
@@ -58,9 +61,12 @@ public class FateLockedHudOverlay extends OverlayPanel
 
         if (state != null)
         {
+            StringBuilder keyStr = new StringBuilder(String.valueOf(state.getKeys()));
+            if (state.getSpecialKeys() > 0) keyStr.append(" · O").append(state.getSpecialKeys());
+            if (state.getChaosKeys() > 0) keyStr.append(" · C").append(state.getChaosKeys());
             panelComponent.getChildren().add(LineComponent.builder()
                 .left("Keys")
-                .right(state.getKeys() + " · O " + state.getSpecialKeys() + " · C " + state.getChaosKeys())
+                .right(keyStr.toString())
                 .rightColor(GOLD)
                 .build());
             panelComponent.getChildren().add(LineComponent.builder()

@@ -101,6 +101,7 @@ public class FateLockedPlugin extends Plugin
     @Inject private FateLockedSceneOverlay sceneOverlay;
     @Inject private FateLockedMinimapOverlay minimapOverlay;
     @Inject private FateLockedHudOverlay hudOverlay;
+    @Inject private FateLockedContentOverlay contentOverlay;
     @Inject private FateLockedFlashOverlay flashOverlay;
     @Inject private ChatMessageManager chatMessageManager;
     @Inject private ClientToolbar clientToolbar;
@@ -263,6 +264,7 @@ public class FateLockedPlugin extends Plugin
         overlayManager.add(sceneOverlay);
         overlayManager.add(minimapOverlay);
         overlayManager.add(hudOverlay);
+        overlayManager.add(contentOverlay);
         overlayManager.add(flashOverlay);
 
         panel.setCallbacks(this::applyPastedBundle, () -> clientThread.invoke(this::reloadBundle));
@@ -288,6 +290,7 @@ public class FateLockedPlugin extends Plugin
         overlayManager.remove(sceneOverlay);
         overlayManager.remove(minimapOverlay);
         overlayManager.remove(hudOverlay);
+        overlayManager.remove(contentOverlay);
         overlayManager.remove(flashOverlay);
         if (navButton != null)
         {
