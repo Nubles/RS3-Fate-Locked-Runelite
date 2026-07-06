@@ -39,6 +39,9 @@ touch content you haven't unlocked yet.
   above your unlocked equipment tier for that slot.
 - **Locked slayer-task warning.** Warns (chat + HUD) when your assigned slayer
   monster only lives in chunks you haven't unlocked.
+- **Locked-bank warning.** In bank-locked runs (every mode by default in the
+  web app), opening a bank or deposit box you haven't unlocked in the tracker
+  fires a chat warning — banking is a privilege you roll for.
 - **Unlock progress.** A HUD line with how many areas you've unlocked and the
   percentage of authored chunks opened.
 - **Locked right-click tags.** Menu entries for NPCs, objects, ground items and

@@ -105,6 +105,11 @@ public class FateLockedBundle
 
     /** Cached unlock-progress counts for the HUD. */
     @Getter private final int unlockedChunks;
+    /** Bank-locked modes: whether banking is gated, and the bank-chunk ids
+     *  (canonical "cx*256+cy") the player has rolled. Mirrors the web app's
+     *  rules.bankLocks + unlocks.banks; empty/false in unrestricted runs. */
+    private final boolean bankLocks;
+    private final Set<String> unlockedBanks;
     @Getter private final int totalChunks;
     @Getter private final int unlockedAreas;
     @Getter private final int totalAreas;
@@ -148,6 +153,15 @@ public class FateLockedBundle
         {
             this.chunkedUnlockedSet = null;
         }
+
+        this.bankLocks = raw != null && raw.bankLocks;
+        Set<String> banks = new HashSet<>();
+        if (raw != null && raw.unlockedBanks != null)
+        {
+            for (String id : raw.unlockedBanks) if (id != null) banks.add(id.trim());
+        }
+        this.unlockedBanks = banks;
+
         this.chunkContent = raw == null || raw.chunkContent == null
             ? Collections.<String, Map<String, List<String>>>emptyMap() : raw.chunkContent;
         this.itemTiers = raw == null || raw.itemTiers == null
@@ -496,6 +510,20 @@ public class FateLockedBundle
             || chunkedUnlockedSet.contains(new CanonicalChunk(chunk.getCx(), chunk.getCy() - 1));
     }
 
+    /** Does this run lock banks individually (rules.bankLocks)? */
+    public boolean banksLocked()
+    {
+        return bankLocks;
+    }
+
+    /** Is the bank at this chunk usable? True when banks aren't locked; else
+     *  the chunk's canonical id must be in the rolled set. */
+    public boolean isBankUnlocked(CanonicalChunk chunk)
+    {
+        if (!bankLocks) return true;
+        return unlockedBanks.contains(Integer.toString(chunk.getCx() * 256 + chunk.getCy()));
+    }
+
     public boolean isChunkedBundle()
     {
         return chunkedUnlockedSet != null;
@@ -530,6 +558,8 @@ public class FateLockedBundle
         Map<String, List<String>> regionGroups;
         List<String> unlockedRegions;
         List<String> unlockedChunks;
+        boolean bankLocks;
+        List<String> unlockedBanks;
         Map<String, Map<String, List<String>>> chunkContent;
         Map<String, Integer> itemTiers;
         Map<String, List<RawChunk>> slayerChunks;

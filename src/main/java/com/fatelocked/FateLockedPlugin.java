@@ -181,6 +181,10 @@ public class FateLockedPlugin extends Plugin
     private boolean diaryBaselined = false;
     /** Widget group shown when a quest is completed (the reward scroll). */
     private static final int QUEST_COMPLETED_GROUP_ID = 153;
+    /** Interface group ids for the bank (12) and deposit box (192) — stable
+     *  numeric ids, used raw like QUEST_COMPLETED to avoid API-constant churn. */
+    private static final int BANK_GROUP_ID = 12;
+    private static final int DEPOSIT_BOX_GROUP_ID = 192;
     /** Crystal key — a gold-key item icon for the Keys infobox. */
     private static final int KEYS_ICON_ITEM = 989;
     /**
@@ -460,6 +464,13 @@ public class FateLockedPlugin extends Plugin
     @Subscribe
     public void onWidgetLoaded(WidgetLoaded ev)
     {
+        // Locked-bank warning is independent of the roll-nudge toggle.
+        if ((ev.getGroupId() == BANK_GROUP_ID || ev.getGroupId() == DEPOSIT_BOX_GROUP_ID)
+            && config.warnLockedBank() && bundle.banksLocked())
+        {
+            warnLockedBankIfNeeded();
+        }
+
         if (!config.rollNudges()) return;
         if (ev.getGroupId() == QUEST_COMPLETED_GROUP_ID)
         {
@@ -469,6 +480,32 @@ public class FateLockedPlugin extends Plugin
             // a generic label rather than failing if the layout doesn't match.
             clientThread.invokeLater(() -> pushSuggestion("Quest", extractQuestName()));
         }
+    }
+
+    /**
+     * One-off advisory when the player opens a bank/deposit box in a chunk
+     * whose bank they haven't rolled (bank-locked runs only). The plugin can't
+     * block banking (server-authoritative), only flag it — same as the
+     * locked-chunk warnings.
+     */
+    private void warnLockedBankIfNeeded()
+    {
+        Player local = client.getLocalPlayer();
+        WorldPoint wp = local == null ? null : local.getWorldLocation();
+        if (wp == null) return;
+        CanonicalChunk chunk = CanonicalChunk.of(wp);
+        if (bundle.isBankUnlocked(chunk)) return;
+        String label = bundle.labelAt(chunk);
+        String where = label == null ? "This bank" : label + " bank";
+        ChatMessageBuilder msg = new ChatMessageBuilder()
+            .append(ChatColorType.HIGHLIGHT).append("[Fate Locked] ")
+            .append(ChatColorType.NORMAL).append(where)
+            .append(ChatColorType.NORMAL).append(" is LOCKED — roll it under Banks in the tracker before you rely on it.");
+        chatMessageManager.queue(QueuedMessage.builder()
+            .type(ChatMessageType.GAMEMESSAGE)
+            .runeLiteFormattedMessage(msg.build())
+            .build());
+        notifyIfEnabled(where + " is locked");
     }
 
     /** Reads the quest name off the reward scroll widget, or null if it can't be found. */

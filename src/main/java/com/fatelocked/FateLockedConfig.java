@@ -111,6 +111,17 @@ public interface FateLockedConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "warnLockedBank",
+        name = "Warn opening a locked bank",
+        description = "Bank-locked runs: chat warning when you open a bank or deposit box you haven't unlocked in the tracker",
+        section = warningsSection
+    )
+    default boolean warnLockedBank()
+    {
+        return true;
+    }
+
+    @ConfigItem(
         keyName = "flashOnLocked",
         name = "Screen flash on locked entry",
         description = "Pulse a red border around the viewport when crossing into locked territory",
