@@ -30,6 +30,12 @@ public class FateLockedHudOverlay extends OverlayPanel
     private final FateLockedPlugin plugin;
     private final FateLockedConfig config;
 
+    // Nearest bank/shop cache — recomputed on chunk change or bundle reload.
+    private FateLockedBundle cachedBundle;
+    private CanonicalChunk cachedChunk;
+    private FateLockedBundle.Nearest cachedBank;
+    private FateLockedBundle.Nearest cachedShop;
+
     @Inject
     FateLockedHudOverlay(Client client, FateLockedPlugin plugin, FateLockedConfig config)
     {
@@ -127,6 +133,21 @@ public class FateLockedHudOverlay extends OverlayPanel
                 .rightColor(lock == FateLockedBundle.LockState.UNLOCKED ? GREEN
                     : lock == FateLockedBundle.LockState.LOCKED ? RED : GRAY)
                 .build());
+
+            if (config.showNearest() && bundle.hasNearestData())
+            {
+                // Recompute only when the player crosses a chunk boundary or a
+                // new bundle is imported — render() runs per frame.
+                if (bundle != cachedBundle || !chunk.equals(cachedChunk))
+                {
+                    cachedBundle = bundle;
+                    cachedChunk = chunk;
+                    cachedBank = bundle.nearestUsableBank(chunk);
+                    cachedShop = bundle.nearestUsableShop(chunk);
+                }
+                addNearestLine("Bank", cachedBank, chunk, bundle);
+                addNearestLine("Shop", cachedShop, chunk, bundle);
+            }
         }
 
         if (bundle.getTotalChunks() > 0)
@@ -162,6 +183,53 @@ public class FateLockedHudOverlay extends OverlayPanel
         }
 
         return super.render(graphics);
+    }
+
+    /** One "Bank:" / "Shop:" line: "here ✓", "<Area> · <dist> <dir>", or "none unlocked". */
+    private void addNearestLine(String label, FateLockedBundle.Nearest near,
+                                CanonicalChunk from, FateLockedBundle bundle)
+    {
+        if (near == null)
+        {
+            panelComponent.getChildren().add(LineComponent.builder()
+                .left(label)
+                .right("none unlocked")
+                .rightColor(RED)
+                .build());
+            return;
+        }
+        if (near.getDistanceChunks() == 0)
+        {
+            panelComponent.getChildren().add(LineComponent.builder()
+                .left(label)
+                .right("here ✓")
+                .rightColor(GREEN)
+                .build());
+            return;
+        }
+        String area = bundle.labelAt(near.getChunk());
+        String name = area == null
+            ? "(" + near.getChunk().getCx() + ", " + near.getChunk().getCy() + ")"
+            : area.split(" · ")[0];
+        String dir = compass(near.getChunk().getCx() - from.getCx(),
+            near.getChunk().getCy() - from.getCy());
+        panelComponent.getChildren().add(LineComponent.builder()
+            .left(label)
+            .right(truncate(name, 13) + " · " + near.getDistanceChunks() + " " + dir)
+            .rightColor(Color.WHITE)
+            .build());
+    }
+
+    /** 8-way compass point for a chunk delta; a 2:1 dominant axis collapses
+     *  to its cardinal (dx=+5,dy=+1 → "E"; dx=+5,dy=+4 → "NE"). World Y
+     *  grows northward. Never called with dx=dy=0 (distance 0 is "here"). */
+    static String compass(int dx, int dy)
+    {
+        String ns = dy > 0 ? "N" : "S";
+        String ew = dx > 0 ? "E" : "W";
+        if (dy == 0 || Math.abs(dx) >= 2 * Math.abs(dy)) return ew;
+        if (dx == 0 || Math.abs(dy) >= 2 * Math.abs(dx)) return ns;
+        return ns + ew;
     }
 
     private static String truncate(String s, int max)

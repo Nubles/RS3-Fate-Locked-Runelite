@@ -3,6 +3,7 @@ package com.fatelocked;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import lombok.Getter;
+import lombok.Value;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -115,6 +116,10 @@ public class FateLockedBundle
     @Getter private final int totalAreas;
     /** Normalised monster name → chunks it appears in (lazy; from chunkContent). */
     private Map<String, Set<CanonicalChunk>> monsterIndex;
+    /** Chunks with a bank/deposit box, from chunkContent poi ("nearest bank" HUD). */
+    private final Set<CanonicalChunk> bankChunks;
+    /** Chunks with at least one shop, from chunkContent ("nearest shop" HUD). */
+    private final Set<CanonicalChunk> shopChunks;
 
     private FateLockedBundle(RawBundle raw,
                              Map<String, Set<CanonicalChunk>> regionChunks,
@@ -184,6 +189,33 @@ public class FateLockedBundle
         this.state = raw == null ? null : raw.state;
         this.chunkToRegion = chunkToRegion;
         this.chunkToSubArea = chunkToSubArea;
+
+        // Bank/shop chunk indexes for the nearest-unlocked HUD lines. Banks are
+        // recognised by any poi entry containing "bank" — booths, chests and
+        // deposit boxes all count for an ironman.
+        Set<CanonicalChunk> bankSet = new HashSet<>();
+        Set<CanonicalChunk> shopSet = new HashSet<>();
+        for (Map.Entry<String, Map<String, List<String>>> e : this.chunkContent.entrySet())
+        {
+            CanonicalChunk c = parseChunkKey(e.getKey());
+            if (c == null) continue;
+            List<String> shop = e.getValue().get("shop");
+            if (shop != null && !shop.isEmpty()) shopSet.add(c);
+            List<String> poi = e.getValue().get("poi");
+            if (poi != null)
+            {
+                for (String p : poi)
+                {
+                    if (p != null && p.toLowerCase().contains("bank"))
+                    {
+                        bankSet.add(c);
+                        break;
+                    }
+                }
+            }
+        }
+        this.bankChunks = bankSet;
+        this.shopChunks = shopSet;
 
         Set<String> always = new HashSet<>();
         always.add("Misthalin");
@@ -508,6 +540,58 @@ public class FateLockedBundle
             || chunkedUnlockedSet.contains(new CanonicalChunk(chunk.getCx() - 1, chunk.getCy()))
             || chunkedUnlockedSet.contains(new CanonicalChunk(chunk.getCx(), chunk.getCy() + 1))
             || chunkedUnlockedSet.contains(new CanonicalChunk(chunk.getCx(), chunk.getCy() - 1));
+    }
+
+    /** Nearest-usable query result: target chunk + straight-line chunk distance. */
+    @Value
+    public static class Nearest
+    {
+        CanonicalChunk chunk;
+        int distanceChunks;
+    }
+
+    /** Whether the bundle carries chunk-content to power nearest queries (v3+). */
+    public boolean hasNearestData()
+    {
+        return !bankChunks.isEmpty() || !shopChunks.isEmpty();
+    }
+
+    /** Closest chunk with a usable bank (region-unlocked AND, in bank-locked
+     *  runs, individually rolled). Distance 0 = the from chunk itself. Null
+     *  when no bank anywhere is usable. */
+    public Nearest nearestUsableBank(CanonicalChunk from)
+    {
+        return nearest(from, bankChunks, true);
+    }
+
+    /** Closest chunk with a shop the player can reach. */
+    public Nearest nearestUsableShop(CanonicalChunk from)
+    {
+        return nearest(from, shopChunks, false);
+    }
+
+    private Nearest nearest(CanonicalChunk from, Set<CanonicalChunk> candidates, boolean requireBankUnlock)
+    {
+        if (from == null || candidates.isEmpty()) return null;
+        CanonicalChunk best = null;
+        int bestDist = Integer.MAX_VALUE;
+        for (CanonicalChunk c : candidates)
+        {
+            if (lockStateAt(c) != LockState.UNLOCKED) continue;
+            if (requireBankUnlock && !isBankUnlocked(c)) continue;
+            int d = Math.max(Math.abs(c.getCx() - from.getCx()), Math.abs(c.getCy() - from.getCy()));
+            // Ties break toward smaller cx, then cy, so the result is stable
+            // frame-to-frame regardless of set iteration order.
+            if (d < bestDist
+                || (d == bestDist && best != null
+                    && (c.getCx() < best.getCx()
+                        || (c.getCx() == best.getCx() && c.getCy() < best.getCy()))))
+            {
+                best = c;
+                bestDist = d;
+            }
+        }
+        return best == null ? null : new Nearest(best, bestDist);
     }
 
     /** Does this run lock banks individually (rules.bankLocks)? */

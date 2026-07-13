@@ -177,6 +177,17 @@ public interface FateLockedConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "showNearest",
+        name = "HUD: nearest bank & shop",
+        description = "Add HUD lines pointing to the closest unlocked bank and shop (straight-line chunk distance — a hint, not a route)",
+        section = warningsSection
+    )
+    default boolean showNearest()
+    {
+        return true;
+    }
+
+    @ConfigItem(
         keyName = "showChunkContentBox",
         name = "Show \"in this chunk\" box",
         description = "Draggable overlay listing the current chunk's monsters, shops, farming patches and points of interest — the same content the app's map chunk-info panel shows. Off by default; drag it anywhere.",
