@@ -101,8 +101,10 @@ public class FateLockedBundle
 
     private final Map<CanonicalChunk, String> chunkToRegion;
     private final Map<CanonicalChunk, String> chunkToSubArea;
-    /** Misthalin + its starter areas: always unlocked, mirroring the app. */
+    /** The mode's free-at-start areas (bundle freeAreas; Misthalin fallback). */
     private final Set<String> alwaysUnlocked;
+    /** Sub-area name → its parent continent, derived from regionGroups. */
+    private final Map<String, String> parentContinent;
 
     /** Cached unlock-progress counts for the HUD. */
     @Getter private final int unlockedChunks;
@@ -217,11 +219,30 @@ public class FateLockedBundle
         this.bankChunks = bankSet;
         this.shopChunks = shopSet;
 
+        // Free-at-start baseline. v3.1+ bundles carry the mode's actual free
+        // set (full Misthalin / Lumbridge-only / none); older bundles fall
+        // back to the historical full-Misthalin assumption.
         Set<String> always = new HashSet<>();
-        always.add("Misthalin");
-        List<String> misthalinKids = this.regionGroups.get("Misthalin");
-        if (misthalinKids != null) always.addAll(misthalinKids);
+        if (raw != null && raw.freeAreas != null)
+        {
+            for (String a : raw.freeAreas) if (a != null) always.add(a);
+        }
+        else
+        {
+            always.add("Misthalin");
+            List<String> misthalinKids = this.regionGroups.get("Misthalin");
+            if (misthalinKids != null) always.addAll(misthalinKids);
+        }
         this.alwaysUnlocked = always;
+
+        // Sub-area → parent continent, for the continent-level unlock rules.
+        Map<String, String> parents = new HashMap<>();
+        for (Map.Entry<String, List<String>> e : this.regionGroups.entrySet())
+        {
+            if (e.getValue() == null) continue;
+            for (String sub : e.getValue()) parents.putIfAbsent(sub, e.getKey());
+        }
+        this.parentContinent = parents;
 
         // Unlock progress (computed once; lockStateAt/isUnlocked are ready now).
         int tc = 0, uc = 0;
@@ -426,16 +447,28 @@ public class FateLockedBundle
         }
         if (alwaysUnlocked.contains(name)) return true;
         if (unlockedRegions.contains(name)) return true;
-        List<String> children = regionGroups.get(name);
-        if (children != null && !children.isEmpty())
+        // Mirror the web map's isRegionUnlocked (utils/reachability.ts) —
+        // pinned by the app's runelitePluginParity test:
+        // a sub-area is unlocked when its parent continent is free/rolled
+        // directly, or when the continent is complete (every sibling
+        // unlocked-or-free); a continent when all its children are.
+        String parent = parentContinent.get(name);
+        if (parent != null)
         {
-            for (String c : children)
-            {
-                if (!unlockedRegions.contains(c) && !alwaysUnlocked.contains(c)) return false;
-            }
-            return true;
+            if (alwaysUnlocked.contains(parent) || unlockedRegions.contains(parent)) return true;
+            if (allUnlockedOrFree(regionGroups.get(parent))) return true;
         }
-        return false;
+        return allUnlockedOrFree(regionGroups.get(name));
+    }
+
+    private boolean allUnlockedOrFree(List<String> names)
+    {
+        if (names == null || names.isEmpty()) return false;
+        for (String n : names)
+        {
+            if (!unlockedRegions.contains(n) && !alwaysUnlocked.contains(n)) return false;
+        }
+        return true;
     }
 
     /**
@@ -641,6 +674,7 @@ public class FateLockedBundle
         Map<String, List<RawChunk>> subAreaChunks;
         Map<String, List<String>> regionGroups;
         List<String> unlockedRegions;
+        List<String> freeAreas;
         List<String> unlockedChunks;
         boolean bankLocks;
         List<String> unlockedBanks;
