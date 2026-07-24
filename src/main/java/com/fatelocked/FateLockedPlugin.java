@@ -17,6 +17,7 @@ import com.fatelocked.guardian.GuardContext;
 import com.fatelocked.guardian.GuardResult;
 import com.fatelocked.guardian.StrictModeClickHandler;
 import com.fatelocked.guardian.StrictModeGuard;
+import com.fatelocked.guardian.StrictModePause;
 import com.fatelocked.detectors.BossRaidDetector;
 import com.fatelocked.detectors.CollectionLogDetector;
 import com.fatelocked.detectors.ClueCasketDetector;
@@ -96,6 +97,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.time.Duration;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -172,6 +174,7 @@ public class FateLockedPlugin extends Plugin
     private final StrictModeClickHandler strictClickHandler =
         new StrictModeClickHandler(new StrictModeGuard());
     private volatile Instant rulesImportedAt;
+    private final StrictModePause strictPause = new StrictModePause(Clock.systemUTC());
 
     /** How long the locked-entry screen flash lasts. */
     public static final long LOCKED_FLASH_MS = 1600;
@@ -328,6 +331,12 @@ public class FateLockedPlugin extends Plugin
         overlayManager.add(flashOverlay);
 
         panel.setCallbacks(this::applyPastedBundle, () -> clientThread.invoke(this::reloadBundle));
+        panel.setGuardianCallbacks(
+            () -> { strictPause.pauseFor(Duration.ofSeconds(60)); updateStrictModePanel(); },
+            () -> { strictPause.resume(); updateStrictModePanel(); },
+            () -> configManager.setConfiguration(
+                FateLockedConfig.GROUP, "strictModeIntroSeen", true));
+        updateStrictModePanel();
         panel.setRollInboxLink(FateLockedPanel.TRACKER_URL, config.syncCode());
         updatePanelSyncHealth();
         navButton = NavigationButton.builder()
@@ -395,6 +404,17 @@ public class FateLockedPlugin extends Plugin
         else if ("showInfoBoxes".equals(key))
         {
             refreshInfoBoxes();
+        }
+        else if ("strictMode".equals(key))
+        {
+            strictPause.resume();
+            updateStrictModePanel();
+            Boolean seen = configManager.getConfiguration(
+                FateLockedConfig.GROUP, "strictModeIntroSeen", Boolean.class);
+            if (config.strictMode() && !Boolean.TRUE.equals(seen))
+            {
+                panel.showStrictModeIntro();
+            }
         }
         else if ("onlineSync".equals(key) || "syncCode".equals(key) || "relayUrl".equals(key))
         {
@@ -862,6 +882,8 @@ public class FateLockedPlugin extends Plugin
         Player local = client.getLocalPlayer();
         if (local == null) return;
 
+        updateStrictModePanel();
+
         // Once per login, flag if the character doesn't match the bound account.
         checkBoundAccount();
 
@@ -905,7 +927,7 @@ public class FateLockedPlugin extends Plugin
         FateLockedBundle current = bundle;
         boolean accountMatch = currentAccountMatches(current);
         GuardContext context = new GuardContext(
-            config.strictMode(), false, accountMatch, rulesAreFresh(),
+            config.strictMode(), strictPause.isPaused(), accountMatch, rulesAreFresh(),
             new FateRuleEngine(current, accountMatch, false));
         GuardResult result = strictClickHandler.handle(event, action, context);
         if (result.getOutcome() != GuardResult.Outcome.BLOCK) return;
@@ -925,6 +947,11 @@ public class FateLockedPlugin extends Plugin
             .build());
     }
 
+    private void updateStrictModePanel()
+    {
+        panel.updateStrictMode(
+            config.strictMode(), strictPause.isPaused(), strictPause.remainingSeconds());
+    }
     private boolean rulesAreFresh()
     {
         Instant stamp = config.onlineSync() ? lastTrackerSync : rulesImportedAt;

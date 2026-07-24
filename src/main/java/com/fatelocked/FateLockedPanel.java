@@ -58,7 +58,14 @@ class FateLockedPanel extends PluginPanel
     private final JLabel lastSyncVal = value();
     private final JLabel importVal = value();
     private final JPanel chunkBody = column();
-    private final JTextArea pasteArea = new JTextArea(6, 10);
+private final JTextArea pasteArea = new JTextArea(6, 10);
+    private final JLabel strictModeVal = value();
+    private final JButton strictModeButton = new JButton();
+    private final JPanel strictIntro = card();
+    private Runnable onStrictPause = () -> {};
+    private Runnable onStrictResume = () -> {};
+    private Runnable onStrictIntroDismiss = () -> {};
+    private boolean strictPaused;
 
     private String rollInboxUrl = TRACKER_URL + "?open=roll-inbox&code=";
     private JPanel bundleBody;
@@ -88,6 +95,17 @@ class FateLockedPanel extends PluginPanel
         col.add(chunkBody);
         col.add(Box.createVerticalStrut(12));
 
+        buildStrictIntro();
+        col.add(strictIntro);
+        col.add(section("GUARDIAN"));
+        col.add(stats(new String[]{"Strict Mode"}, new JLabel[]{strictModeVal}));
+        fullWidth(strictModeButton);
+        strictModeButton.addActionListener(event -> {
+            if (strictPaused) onStrictResume.run(); else onStrictPause.run();
+        });
+        col.add(Box.createVerticalStrut(5));
+        col.add(strictModeButton);
+        col.add(Box.createVerticalStrut(12));
         col.add(section("ROLL INBOX"));
         col.add(stats(
             new String[]{"Queued", "Needs review", "Warnings", "Last sync"},
@@ -115,6 +133,46 @@ class FateLockedPanel extends PluginPanel
         add(col, BorderLayout.NORTH);
     }
 
+    private void buildStrictIntro()
+    {
+        JLabel copy = new JLabel("<html>Strict Mode is now on. It prevents only actions proven locked by the current rules. Unknown actions and walking are never blocked. You can pause it for 60 seconds here or turn it off immediately in plugin settings.</html>");
+        copy.setForeground(Color.LIGHT_GRAY);
+        strictIntro.add(copy);
+        JButton dismiss = new JButton("Got it");
+        fullWidth(dismiss);
+        dismiss.addActionListener(event -> {
+            strictIntro.setVisible(false);
+            onStrictIntroDismiss.run();
+        });
+        strictIntro.add(Box.createVerticalStrut(5));
+        strictIntro.add(dismiss);
+        strictIntro.setVisible(false);
+    }
+
+    void setGuardianCallbacks(Runnable pause, Runnable resume, Runnable dismissIntro)
+    {
+        onStrictPause = pause;
+        onStrictResume = resume;
+        onStrictIntroDismiss = dismissIntro;
+    }
+
+    void showStrictModeIntro()
+    {
+        SwingUtilities.invokeLater(() -> strictIntro.setVisible(true));
+    }
+
+    void updateStrictMode(boolean enabled, boolean paused, long seconds)
+    {
+        SwingUtilities.invokeLater(() -> {
+            strictPaused = paused;
+            strictModeVal.setText(enabled ? paused ? "Paused" : "On" : "Off");
+            strictModeVal.setForeground(enabled ? paused ? AMBER : GREEN : GRAY);
+            strictModeButton.setVisible(enabled);
+            strictModeButton.setText(paused
+                ? "Resume Strict Mode · " + seconds + "s"
+                : "Pause Strict Mode for 60 seconds");
+        });
+    }
     private void buildImportControls()
     {
         bundleBody.add(Box.createVerticalStrut(4));
