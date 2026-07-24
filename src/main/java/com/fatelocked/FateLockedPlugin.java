@@ -3,6 +3,15 @@ package com.fatelocked;
 import com.google.gson.Gson;
 import com.fatelocked.events.FateEventOutbox;
 import com.fatelocked.events.FateEventRelayClient;
+import com.fatelocked.events.FateEventFactory;
+import com.fatelocked.events.FateEvent;
+import com.fatelocked.detectors.BossRaidDetector;
+import com.fatelocked.detectors.CollectionLogDetector;
+import com.fatelocked.detectors.ClueCasketDetector;
+import com.fatelocked.detectors.CombatAchievementDetector;
+import com.fatelocked.detectors.DetectedEvent;
+import com.fatelocked.detectors.QuestDetector;
+import com.fatelocked.detectors.SkillLevelDetector;
 import com.google.inject.Provides;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -122,6 +131,13 @@ public class FateLockedPlugin extends Plugin
     private volatile String lastRelayVersion;
     private FateEventOutbox eventOutbox;
     private FateEventRelayClient eventRelayClient;
+    private final FateEventFactory eventFactory = new FateEventFactory();
+    private final SkillLevelDetector skillLevelDetector = new SkillLevelDetector();
+    private final QuestDetector questDetector = new QuestDetector();
+    private final CombatAchievementDetector combatAchievementDetector = new CombatAchievementDetector();
+    private final CollectionLogDetector collectionLogDetector = new CollectionLogDetector();
+    private final ClueCasketDetector clueCasketDetector = new ClueCasketDetector();
+    private final BossRaidDetector bossRaidDetector = new BossRaidDetector();
     /** Configurable hotkey: re-import the bundle from the clipboard. */
     private final HotkeyListener reimportHotkey = new HotkeyListener(() -> config.reimportHotkey())
     {
@@ -371,6 +387,7 @@ public class FateLockedPlugin extends Plugin
             // The client fires StatChanged for every skill at login; clearing
             // here lets those re-establish the baseline without firing nudges.
             lastLevels.clear();
+            skillLevelDetector.clear();
             diaryState.clear(); // re-baseline diaries this login (don't nudge already-done tiers)
             diaryBaselined = false;
             warnedOverTier.clear(); // re-warn over-tier gear once per session
@@ -390,14 +407,18 @@ public class FateLockedPlugin extends Plugin
     @Subscribe
     public void onStatChanged(StatChanged ev)
     {
-        if (!config.rollNudges()) return;
         Skill skill = ev.getSkill();
         int level = ev.getLevel();
-        Integer prev = lastLevels.put(skill, level);
-        // prev == null is the login baseline; only nudge on a real increase.
-        if (prev != null && level > prev)
+        java.util.Optional<DetectedEvent> detected =
+            skillLevelDetector.detect(skillName(skill), level);
+        if (detected.isPresent())
         {
-            nudge("Leveled " + skillName(skill) + " to " + level + " — may be worth a roll.");
+            record(detected.get());
+            if (config.rollNudges())
+            {
+                nudge("Leveled " + skillName(skill) + " to " + level
+                    + " — may be worth a roll.");
+            }
         }
     }
 
@@ -411,28 +432,34 @@ public class FateLockedPlugin extends Plugin
         // Combat achievements stay on chat (their varbits are progress counts with
         // totals that shift as Jagex adds tasks). Diaries are detected via varbit
         // (onVarbitChanged), quests via the reward widget — both more reliable.
-        if (config.rollNudges() && m.contains("combat task:"))
+        if (m.contains("combat task:"))
         {
-            // "Congratulations, you've completed a hard combat task: <col=..>X</col>."
-            Matcher mat = COMBAT_TASK.matcher(Text.removeTags(raw));
-            String task = mat.find() ? mat.group(1).trim() : null;
-            nudge(task != null
-                ? "Combat achievement: " + task + " — may be worth a roll."
-                : "Combat achievement complete — may be worth a roll.");
-            pushSuggestion("Combat Achievement", task);
+            String plain = Text.removeTags(raw);
+            DetectedEvent detected = combatAchievementDetector.detect(plain);
+            record(detected);
+            if (config.rollNudges())
+            {
+                String task = detected.getCanonicalLabel();
+                nudge(task != null
+                    ? "Combat achievement: " + task + " — may be worth a roll."
+                    : "Combat achievement complete — may be worth a roll.");
+            }
         }
 
-        // The client itself broadcasts every new Collection Log entry on this
-        // exact line — no inference needed, just watch for it.
-        if (config.rollNudges() && m.contains("new item added to your collection log"))
+        if (m.contains("new item added to your collection log"))
         {
             Matcher mat = COLLECTION_LOG_ITEM.matcher(raw);
             String item = mat.find() ? mat.group(1).trim() : null;
-            nudge(item != null
-                ? "Collection log: " + item + " — may be worth a roll."
-                : "Collection log entry added — may be worth a roll.");
+            // RuneLite has the observed label but not the app's canonical item-id
+            // index, so delivery stays conservative until the app confirms it.
+            record(collectionLogDetector.detect(item, false));
+            if (config.rollNudges())
+            {
+                nudge(item != null
+                    ? "Collection log: " + item + " — may be worth a roll."
+                    : "Collection log entry added — may be worth a roll.");
+            }
         }
-
         // Slayer assignment / task-check messages mention the monster.
         if (config.warnLockedSlayer() && m.contains("to kill"))
         {
@@ -488,14 +515,20 @@ public class FateLockedPlugin extends Plugin
             warnLockedBankIfNeeded();
         }
 
-        if (!config.rollNudges()) return;
         if (ev.getGroupId() == QUEST_COMPLETED_GROUP_ID)
         {
-            nudge("Quest complete — may be worth a roll.");
-            // Best-effort quest name for the relay suggestion; the reward
-            // scroll's text child varies by quest length, so this degrades to
-            // a generic label rather than failing if the layout doesn't match.
-            clientThread.invokeLater(() -> pushSuggestion("Quest", extractQuestName()));
+            clientThread.invokeLater(() ->
+            {
+                DetectedEvent detected = questDetector.detect(extractQuestName());
+                record(detected);
+                if (config.rollNudges())
+                {
+                    nudge(detected.getCanonicalLabel() == null
+                        ? "Quest complete — may be worth a roll."
+                        : "Quest complete: " + detected.getCanonicalLabel()
+                            + " — may be worth a roll.");
+                }
+            });
         }
     }
 
@@ -555,18 +588,27 @@ public class FateLockedPlugin extends Plugin
     @Subscribe
     public void onLootReceived(LootReceived ev)
     {
-        if (!config.rollNudges()) return;
-        // Compare by enum name rather than importing LootRecordType directly —
-        // its package has moved between RuneLite versions; this is stable
-        // against that regardless of which one the Hub build resolves.
         String type = ev.getType() == null ? "" : ev.getType().name();
-        if ("EVENT".equals(type))
+        if (ev.getItems() != null)
         {
-            nudge("Raid loot (" + ev.getName() + ") — may be worth a roll.");
+            for (net.runelite.client.game.ItemStack stack : ev.getItems())
+            {
+                String itemName = itemManager.getItemComposition(stack.getId()).getName();
+                java.util.Optional<DetectedEvent> clue = clueCasketDetector.detect(itemName);
+                if (clue.isPresent()) record(clue.get());
+            }
         }
-        else if ("NPC".equals(type) && ev.getCombatLevel() >= BOSS_LOOT_COMBAT_LEVEL)
+        java.util.Optional<DetectedEvent> detected =
+            bossRaidDetector.detect(type, ev.getName(), ev.getCombatLevel());
+        if (detected.isPresent())
         {
-            nudge("Boss kill (" + ev.getName() + ") — may be worth a roll.");
+            record(detected.get());
+            if (config.rollNudges())
+            {
+                nudge(detected.get().getType() == com.fatelocked.events.FateEventType.RAID_COMPLETION
+                    ? "Raid loot (" + ev.getName() + ") — may be worth a roll."
+                    : "Boss kill (" + ev.getName() + ") — may be worth a roll.");
+            }
         }
     }
 
@@ -597,6 +639,29 @@ public class FateLockedPlugin extends Plugin
         {
             nudge("Diary complete: " + name + " — may be worth a roll.");
             pushSuggestion("Diary", name);
+        }
+    }
+
+    private void record(DetectedEvent detected)
+    {
+        if (!config.onlineSync() || detected == null || eventOutbox == null) return;
+        FateLockedBundle currentBundle = bundle;
+        if (currentBundle == null || currentBundle.getRunId() == null
+            || currentBundle.getRunId().trim().isEmpty()) return;
+        Player local = client.getLocalPlayer();
+        String account = local == null ? null : local.getName();
+        if (account == null || account.trim().isEmpty()) return;
+        FateEvent event = eventFactory.create(
+            detected.getType(), detected.getCanonicalLabel(), detected.getConfidence(),
+            detected.getEvidence(), currentBundle, account,
+            detected.getDetectorId(), detected.getDetectorVersion());
+        try
+        {
+            eventOutbox.enqueue(event);
+        }
+        catch (IOException ex)
+        {
+            log.warn("Could not persist detected Fate event", ex);
         }
     }
 
