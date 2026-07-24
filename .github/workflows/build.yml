@@ -23,8 +23,10 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.5'
-      - name: Build jar
-        run: gradle build --no-daemon
+      - name: Test
+        run: gradle test --no-daemon
+      - name: Build Hub-compatible jar
+        run: gradle jar --no-daemon
       - name: Upload jar
         uses: actions/upload-artifact@v4
         with:

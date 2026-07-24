@@ -1,0 +1,23 @@
+{
+  "version": 3,
+  "chunks": {
+    "Misthalin": [{"cx": 50, "cy": 50}],
+    "Asgarnia": [{"cx": 46, "cy": 52}]
+  },
+  "subAreaChunks": {
+    "Lumbridge": [{"cx": 50, "cy": 50}],
+    "Falador": [{"cx": 46, "cy": 52}]
+  },
+  "regionGroups": {
+    "Misthalin": ["Lumbridge"],
+    "Asgarnia": ["Falador"]
+  },
+  "unlockedRegions": ["Falador"],
+  "bankLocks": true,
+  "unlockedBanks": ["11828"],
+  "state": {
+    "keys": 2,
+    "fatePoints": 7,
+    "linkedAccount": "Nubles"
+  }
+}
