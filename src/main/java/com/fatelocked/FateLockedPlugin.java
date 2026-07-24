@@ -18,6 +18,8 @@ import com.fatelocked.guardian.GuardResult;
 import com.fatelocked.guardian.StrictModeClickHandler;
 import com.fatelocked.guardian.StrictModeGuard;
 import com.fatelocked.guardian.StrictModePause;
+import com.fatelocked.guardian.StrictModeAuditEntry;
+import com.fatelocked.guardian.StrictModeAuditLog;
 import com.fatelocked.detectors.BossRaidDetector;
 import com.fatelocked.detectors.CollectionLogDetector;
 import com.fatelocked.detectors.ClueCasketDetector;
@@ -149,6 +151,7 @@ public class FateLockedPlugin extends Plugin
     private volatile Instant lastTrackerSync;
     private volatile boolean relayOffline = true;
     private FateEventOutbox eventOutbox;
+    private StrictModeAuditLog strictAuditLog;
     private FateEventRelayClient eventRelayClient;
     private final FateEventFactory eventFactory = new FateEventFactory();
     private final SkillLevelDetector skillLevelDetector = new SkillLevelDetector();
@@ -323,6 +326,16 @@ public class FateLockedPlugin extends Plugin
             eventOutbox = null;
             eventRelayClient = null;
         }
+        try
+        {
+            strictAuditLog = new StrictModeAuditLog(gson,
+                DATA_DIR.toPath().resolve("strict-mode-events.json"));
+        }
+        catch (IOException ex)
+        {
+            log.warn("Could not open Strict Mode audit log", ex);
+            strictAuditLog = null;
+        }
         overlayManager.add(worldMapOverlay);
         overlayManager.add(sceneOverlay);
         overlayManager.add(minimapOverlay);
@@ -337,6 +350,7 @@ public class FateLockedPlugin extends Plugin
             () -> configManager.setConfiguration(
                 FateLockedConfig.GROUP, "strictModeIntroSeen", true));
         updateStrictModePanel();
+        updateStrictAuditPanel();
         panel.setRollInboxLink(FateLockedPanel.TRACKER_URL, config.syncCode());
         updatePanelSyncHealth();
         navButton = NavigationButton.builder()
@@ -945,8 +959,36 @@ public class FateLockedPlugin extends Plugin
             .type(ChatMessageType.GAMEMESSAGE)
             .runeLiteFormattedMessage(message.build())
             .build());
+        if (strictAuditLog != null)
+        {
+            try
+            {
+                String chunk = action.getChunk() == null ? null
+                    : action.getChunk().getCx() + "," + action.getChunk().getCy();
+                strictAuditLog.append(new StrictModeAuditEntry(
+                    System.currentTimeMillis(), action.getKind().name(),
+                    action.getTarget(), chunk, reason));
+                updateStrictAuditPanel();
+            }
+            catch (IOException ex)
+            {
+                log.debug("Could not write Strict Mode audit log: {}", ex.getMessage());
+            }
+        }
     }
 
+    private void updateStrictAuditPanel()
+    {
+        List<String> lines = new ArrayList<>();
+        if (strictAuditLog != null)
+        {
+            for (StrictModeAuditEntry entry : strictAuditLog.recent(5))
+            {
+                lines.add(entry.getTarget() + " — " + entry.getReason());
+            }
+        }
+        panel.updateRecentPrevented(lines);
+    }
     private void updateStrictModePanel()
     {
         panel.updateStrictMode(

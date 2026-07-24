@@ -62,6 +62,7 @@ private final JTextArea pasteArea = new JTextArea(6, 10);
     private final JLabel strictModeVal = value();
     private final JButton strictModeButton = new JButton();
     private final JPanel strictIntro = card();
+    private final JPanel recentPreventedBody = column();
     private Runnable onStrictPause = () -> {};
     private Runnable onStrictResume = () -> {};
     private Runnable onStrictIntroDismiss = () -> {};
@@ -105,6 +106,9 @@ private final JTextArea pasteArea = new JTextArea(6, 10);
         });
         col.add(Box.createVerticalStrut(5));
         col.add(strictModeButton);
+        col.add(Box.createVerticalStrut(7));
+        col.add(collapsibleHeader("RECENT PREVENTED ACTIONS", recentPreventedBody, false));
+        col.add(recentPreventedBody);
         col.add(Box.createVerticalStrut(12));
         col.add(section("ROLL INBOX"));
         col.add(stats(
@@ -161,6 +165,30 @@ private final JTextArea pasteArea = new JTextArea(6, 10);
         SwingUtilities.invokeLater(() -> strictIntro.setVisible(true));
     }
 
+    void updateRecentPrevented(List<String> lines)
+    {
+        SwingUtilities.invokeLater(() -> {
+            recentPreventedBody.removeAll();
+            if (lines == null || lines.isEmpty())
+            {
+                JLabel empty = new JLabel("None yet");
+                empty.setForeground(GRAY);
+                recentPreventedBody.add(empty);
+            }
+            else
+            {
+                for (String line : lines)
+                {
+                    JLabel item = new JLabel(line);
+                    item.setForeground(Color.LIGHT_GRAY);
+                    item.setToolTipText(line);
+                    recentPreventedBody.add(item);
+                    recentPreventedBody.add(Box.createVerticalStrut(3));
+                }
+            }
+            recentPreventedBody.revalidate();
+        });
+    }
     void updateStrictMode(boolean enabled, boolean paused, long seconds)
     {
         SwingUtilities.invokeLater(() -> {
