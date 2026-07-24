@@ -67,6 +67,10 @@ public class FateLockedBundle
     private final String runId;
     private final String profileName;
     private final int version;
+    private final long runRevision;
+    private final String rulesVersion;
+    private final int contentVersion;
+    private final int detectorContractVersion;
 
     /** Continent name → set of canonical chunks owned by that continent. */
     private final Map<String, Set<CanonicalChunk>> regionChunks;
@@ -132,6 +136,10 @@ public class FateLockedBundle
         this.runId = raw == null ? null : raw.runId;
         this.profileName = raw == null ? null : raw.profileName;
         this.version = raw == null ? 0 : raw.version;
+        this.runRevision = raw == null ? 0 : Math.max(0, raw.runRevision);
+        this.rulesVersion = raw == null || raw.rulesVersion == null ? "1" : raw.rulesVersion;
+        this.contentVersion = raw == null ? 0 : Math.max(0, raw.contentVersion);
+        this.detectorContractVersion = raw == null ? 0 : Math.max(0, raw.detectorContractVersion);
         this.regionChunks = regionChunks;
         this.subAreaChunks = subAreaChunks;
         this.regionGroups = raw == null || raw.regionGroups == null
@@ -669,6 +677,10 @@ public class FateLockedBundle
         int version;
         String runId;
         String profileName;
+        long runRevision;
+        String rulesVersion;
+        int contentVersion;
+        int detectorContractVersion;
         RawChunk chunkOffset;
         Map<String, List<RawChunk>> chunks;
         Map<String, List<RawChunk>> subAreaChunks;
