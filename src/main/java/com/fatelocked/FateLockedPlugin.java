@@ -27,6 +27,11 @@ import com.fatelocked.detectors.CombatAchievementDetector;
 import com.fatelocked.detectors.DetectedEvent;
 import com.fatelocked.detectors.QuestDetector;
 import com.fatelocked.detectors.SkillLevelDetector;
+import com.fatelocked.detectors.SlayerTaskDetector;
+import com.fatelocked.detectors.DiaryTierReviewDetector;
+import com.fatelocked.detectors.PetDropDetector;
+import com.fatelocked.detectors.MinigameCompletionDetector;
+import com.fatelocked.detectors.BossKillDetectorV2;
 import com.google.inject.Provides;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -159,7 +164,12 @@ public class FateLockedPlugin extends Plugin
     private final CombatAchievementDetector combatAchievementDetector = new CombatAchievementDetector();
     private final CollectionLogDetector collectionLogDetector = new CollectionLogDetector();
     private final ClueCasketDetector clueCasketDetector = new ClueCasketDetector();
-    private final BossRaidDetector bossRaidDetector = new BossRaidDetector();
+private final BossRaidDetector bossRaidDetector = new BossRaidDetector();
+    private final BossKillDetectorV2 bossKillDetectorV2 = new BossKillDetectorV2();
+    private final DiaryTierReviewDetector diaryTierReviewDetector = new DiaryTierReviewDetector();
+    private final PetDropDetector petDropDetector = new PetDropDetector();
+    private final MinigameCompletionDetector minigameCompletionDetector = new MinigameCompletionDetector();
+    private SlayerTaskDetector slayerTaskDetector;
     /** Configurable hotkey: re-import the bundle from the clipboard. */
     private final HotkeyListener reimportHotkey = new HotkeyListener(() -> config.reimportHotkey())
     {
@@ -312,7 +322,17 @@ public class FateLockedPlugin extends Plugin
     @Override
     protected void startUp()
     {
-        if (!DATA_DIR.exists()) DATA_DIR.mkdirs();
+if (!DATA_DIR.exists()) DATA_DIR.mkdirs();
+        try
+        {
+            slayerTaskDetector = new SlayerTaskDetector(gson,
+                DATA_DIR.toPath().resolve("slayer-assignment.json"));
+        }
+        catch (IOException ex)
+        {
+            log.warn("Could not open Slayer assignment state", ex);
+            slayerTaskDetector = null;
+        }
         try
         {
             eventOutbox = new FateEventOutbox(gson,
@@ -489,7 +509,18 @@ public class FateLockedPlugin extends Plugin
     {
         if (ev.getType() != ChatMessageType.GAMEMESSAGE && ev.getType() != ChatMessageType.SPAM) return;
         String raw = ev.getMessage() == null ? "" : ev.getMessage();
-        String m = raw.toLowerCase();
+String m = raw.toLowerCase();
+
+        minigameCompletionDetector.onMessage(Text.removeTags(raw), System.currentTimeMillis())
+            .ifPresent(this::record);
+        petDropDetector.detect(Text.removeTags(raw), null, System.currentTimeMillis())
+            .ifPresent(this::record);
+        if (slayerTaskDetector != null
+            && (m.contains("completed your task") || m.contains("return to a slayer master")))
+        {
+            try { slayerTaskDetector.completion(Text.removeTags(raw)).ifPresent(this::record); }
+            catch (IOException ex) { log.debug("Could not update Slayer state", ex); }
+        }
 
         // Combat achievements stay on chat (their varbits are progress counts with
         // totals that shift as Jagex adds tasks). Diaries are detected via varbit
@@ -528,7 +559,12 @@ public class FateLockedPlugin extends Plugin
             Matcher mat = SLAYER_TASK.matcher(raw);
             if (mat.find())
             {
-                slayerTask = mat.group(1).trim();
+slayerTask = mat.group(1).trim();
+                if (slayerTaskDetector != null)
+                {
+                    try { slayerTaskDetector.assignment(slayerTask, null, 0, false); }
+                    catch (IOException ex) { log.debug("Could not save Slayer assignment", ex); }
+                }
                 recomputeSlayer();
             }
         }
@@ -570,6 +606,7 @@ public class FateLockedPlugin extends Plugin
     @Subscribe
     public void onWidgetLoaded(WidgetLoaded ev)
     {
+        if (ev.getGroupId() == 408) minigameCompletionDetector.onPestControlWidget(System.currentTimeMillis());
         // Locked-bank warning is independent of the roll-nudge toggle.
         if ((ev.getGroupId() == BANK_GROUP_ID || ev.getGroupId() == DEPOSIT_BOX_GROUP_ID)
             && config.warnLockedBank() && bundle.banksLocked())
@@ -690,8 +727,12 @@ public class FateLockedPlugin extends Plugin
                 if (clue.isPresent()) record(clue.get());
             }
         }
-        java.util.Optional<DetectedEvent> detected =
-            bossRaidDetector.detect(type, ev.getName(), ev.getCombatLevel());
+java.util.Optional<DetectedEvent> detected =
+            bossKillDetectorV2.detect(type, ev.getName(), client.getGameCycle());
+        if (!detected.isPresent())
+        {
+            detected = bossRaidDetector.detect(type, ev.getName(), ev.getCombatLevel());
+        }
         if (detected.isPresent())
         {
             record(detected.get());
@@ -707,7 +748,6 @@ public class FateLockedPlugin extends Plugin
     @Subscribe
     public void onVarbitChanged(VarbitChanged ev)
     {
-        if (!config.rollNudges()) return;
         // Reliable diary-tier detection: each varbit flips 0→1 when that tier is
         // finished. VarbitChanged fires for EVERY varbit in the game — a very hot
         // event — so the steady-state path is a set-lookup filter, not a scan.
@@ -729,8 +769,12 @@ public class FateLockedPlugin extends Plugin
         Integer prev = diaryState.put(id, v);
         if (prev != null && prev == 0 && v == 1)
         {
-            nudge("Diary complete: " + name + " — may be worth a roll.");
-            pushSuggestion("Diary", name);
+            diaryTierReviewDetector.onVarbit(name, prev, v).ifPresent(this::record);
+            if (config.rollNudges())
+            {
+                nudge("Diary complete: " + name + " — review its tasks in the Roll Inbox.");
+                pushSuggestion("Diary", name);
+            }
         }
     }
 
