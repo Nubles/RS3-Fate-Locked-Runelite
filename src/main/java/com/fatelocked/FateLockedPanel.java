@@ -29,6 +29,11 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 
 /**
  * Side panel for the Fate Locked plugin: live run stats, the player's current
@@ -37,7 +42,7 @@ import java.util.function.Consumer;
  */
 class FateLockedPanel extends PluginPanel
 {
-    private static final String TRACKER_URL = "https://nubles.github.io/OSRS-Fate-Locked/";
+    static final String TRACKER_URL = "https://nubles.github.io/OSRS-Fate-Locked/";
     private static final Color GREEN = new Color(52, 211, 153);
     private static final Color RED = new Color(248, 113, 113);
     private static final Color GOLD = new Color(245, 158, 11);
@@ -49,6 +54,11 @@ class FateLockedPanel extends PluginPanel
     private final JLabel fateVal = value();
     private final JLabel buffVal = value();
     private final JLabel goalVal = value();
+    private final JLabel queuedVal = value();
+    private final JLabel reviewVal = value();
+    private final JLabel warningsVal = value();
+    private final JLabel lastSyncVal = value();
+    private String rollInboxUrl = TRACKER_URL + "?open=roll-inbox&code=";
 
     private final JLabel chunkVal = value();
     private final JLabel regionVal = value();
@@ -91,6 +101,17 @@ class FateLockedPanel extends PluginPanel
         trackerBtn.addActionListener(e -> LinkBrowser.browse(TRACKER_URL));
         col.add(trackerBtn);
         col.add(Box.createVerticalStrut(10));
+
+        col.add(section("ROLL INBOX"));
+        col.add(stats(new String[]{ "Queued", "Needs review", "Warnings", "Last sync" },
+            new JLabel[]{ queuedVal, reviewVal, warningsVal, lastSyncVal }));
+        JButton inboxBtn = new JButton("Open Roll Inbox");
+        fullWidth(inboxBtn);
+        inboxBtn.setToolTipText("Open detected events in the web tracker; RuneLite never rolls for you");
+        inboxBtn.addActionListener(e -> LinkBrowser.browse(rollInboxUrl));
+        col.add(Box.createVerticalStrut(6));
+        col.add(inboxBtn);
+        col.add(Box.createVerticalStrut(12));
 
         col.add(section("RUN"));
         col.add(stats(new String[]{ "Profile", "Account", "Run ID", "Keys", "Fate", "Buff", "Goal", "Import" },
@@ -172,6 +193,65 @@ class FateLockedPanel extends PluginPanel
         this.onImport = onImport;
         this.onReload = onReload;
     }
+
+    void setRollInboxLink(String trackerUrl, String code)
+    {
+        rollInboxUrl = rollInboxUrl(trackerUrl, code);
+    }
+
+    static String rollInboxUrl(String trackerUrl, String code)
+    {
+        String base = trackerUrl == null || trackerUrl.trim().isEmpty()
+            ? TRACKER_URL : trackerUrl.trim();
+        try
+        {
+            return base + "?open=roll-inbox&code=" + URLEncoder.encode(
+                code == null ? "" : code,
+                StandardCharsets.UTF_8.name());
+        }
+        catch (java.io.UnsupportedEncodingException impossible)
+        {
+            throw new IllegalStateException(impossible);
+        }
+    }
+
+    void updateSyncHealth(
+        int pending,
+        int readyHint,
+        int warnings,
+        Instant lastSync,
+        boolean offline)
+    {
+        SwingUtilities.invokeLater(() -> {
+            queuedVal.setText(String.valueOf(Math.max(0, pending)));
+            reviewVal.setText(String.valueOf(Math.max(0, readyHint)));
+            warningsVal.setText(warnings <= 0 ? "None" : warnings + " active");
+            warningsVal.setForeground(warnings <= 0 ? GREEN : RED);
+            if (offline)
+            {
+                lastSyncVal.setText("Offline");
+                lastSyncVal.setForeground(Color.GRAY);
+            }
+            else if (lastSync == null)
+            {
+                lastSyncVal.setText("Waiting...");
+                lastSyncVal.setForeground(GOLD);
+            }
+            else
+            {
+                lastSyncVal.setText(DateTimeFormatter
+                    .ofPattern("HH:mm:ss 'UTC'")
+                    .withZone(ZoneOffset.UTC)
+                    .format(lastSync));
+                lastSyncVal.setForeground(GREEN);
+            }
+        });
+    }
+
+    String queuedTextForTest() { return queuedVal.getText(); }
+    String reviewTextForTest() { return reviewVal.getText(); }
+    String warningTextForTest() { return warningsVal.getText(); }
+    String lastSyncTextForTest() { return lastSyncVal.getText(); }
 
     /** Read the system clipboard and import it as a bundle (local-only, no network). */
     private void importFromClipboard()

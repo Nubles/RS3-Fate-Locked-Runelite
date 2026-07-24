@@ -5,6 +5,7 @@ import com.fatelocked.events.FateEventOutbox;
 import com.fatelocked.events.FateEventRelayClient;
 import com.fatelocked.events.FateEventFactory;
 import com.fatelocked.events.FateEvent;
+import com.fatelocked.events.EventConfidence;
 import com.fatelocked.detectors.BossRaidDetector;
 import com.fatelocked.detectors.CollectionLogDetector;
 import com.fatelocked.detectors.ClueCasketDetector;
@@ -81,6 +82,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -129,6 +131,8 @@ public class FateLockedPlugin extends Plugin
 
     private ScheduledFuture<?> relayPollFuture;
     private volatile String lastRelayVersion;
+    private volatile Instant lastTrackerSync;
+    private volatile boolean relayOffline = true;
     private FateEventOutbox eventOutbox;
     private FateEventRelayClient eventRelayClient;
     private final FateEventFactory eventFactory = new FateEventFactory();
@@ -305,6 +309,8 @@ public class FateLockedPlugin extends Plugin
         overlayManager.add(flashOverlay);
 
         panel.setCallbacks(this::applyPastedBundle, () -> clientThread.invoke(this::reloadBundle));
+        panel.setRollInboxLink(FateLockedPanel.TRACKER_URL, config.syncCode());
+        updatePanelSyncHealth();
         navButton = NavigationButton.builder()
             .tooltip("Fate Locked Ironman")
             .icon(createIcon())
@@ -374,6 +380,9 @@ public class FateLockedPlugin extends Plugin
         else if ("onlineSync".equals(key) || "syncCode".equals(key) || "relayUrl".equals(key))
         {
             lastRelayVersion = null; // re-fetch on the next poll with the new settings
+            relayOffline = !config.onlineSync();
+            panel.setRollInboxLink(FateLockedPanel.TRACKER_URL, config.syncCode());
+            updatePanelSyncHealth();
         }
     }
 
@@ -658,6 +667,7 @@ public class FateLockedPlugin extends Plugin
         try
         {
             eventOutbox.enqueue(event);
+            updatePanelSyncHealth();
         }
         catch (IOException ex)
         {
@@ -1236,17 +1246,48 @@ public class FateLockedPlugin extends Plugin
         }
     }
 
+    private void updatePanelSyncHealth()
+    {
+        List<FateEvent> pending = eventOutbox == null
+            ? java.util.Collections.<FateEvent>emptyList()
+            : eventOutbox.pending();
+        int needsReview = 0;
+        for (FateEvent event : pending)
+        {
+            if (event.getConfidence() == EventConfidence.UNCERTAIN) needsReview++;
+        }
+        int warnings = 0;
+        if (lastLockState == FateLockedBundle.LockState.LOCKED) warnings++;
+        if (slayerTaskWarn != null && !slayerTaskWarn.trim().isEmpty()) warnings++;
+        if (overTierSummary != null && !overTierSummary.trim().isEmpty()) warnings++;
+        panel.updateSyncHealth(
+            pending.size(), needsReview, warnings, lastTrackerSync,
+            relayOffline || !config.onlineSync());
+    }
+
     private void pollRelay()
     {
         // Network consent gate: no relay request is made unless the user has
         // explicitly enabled online sync (see FateLockedConfig.onlineSync, which
         // carries the required IP-address warning). This is the single place that
         // contacts the relay.
-        if (!config.onlineSync()) return;
+        if (!config.onlineSync())
+        {
+            relayOffline = true;
+            updatePanelSyncHealth();
+            return;
+        }
 
         String code = config.syncCode();
         String base = config.relayUrl();
-        if (code == null || code.trim().isEmpty() || base == null || base.trim().isEmpty()) return;
+        if (code == null || code.trim().isEmpty() || base == null || base.trim().isEmpty())
+        {
+            relayOffline = true;
+            updatePanelSyncHealth();
+            return;
+        }
+        relayOffline = false;
+        updatePanelSyncHealth();
         final String trimmedCode = code.trim();
         if (eventRelayClient != null && eventOutbox != null)
         {
@@ -1272,6 +1313,8 @@ public class FateLockedPlugin extends Plugin
             @Override
             public void onFailure(Call call, IOException e)
             {
+                relayOffline = true;
+                updatePanelSyncHealth();
                 log.debug("Relay poll failed: {}", e.getMessage());
             }
 
@@ -1280,6 +1323,12 @@ public class FateLockedPlugin extends Plugin
             {
                 try (Response r = response)
                 {
+                    if (r.isSuccessful())
+                    {
+                        relayOffline = false;
+                        lastTrackerSync = Instant.now();
+                        updatePanelSyncHealth();
+                    }
                     if (r.code() == 304 || !r.isSuccessful() || r.body() == null) return;
                     RelayMessage msg = gson.fromJson(r.body().string(), RelayMessage.class);
                     if (msg == null || msg.payload == null) return;
