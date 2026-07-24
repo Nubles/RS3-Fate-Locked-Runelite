@@ -36,6 +36,7 @@ dependencies {
 
     testImplementation group: 'net.runelite', name: 'client', version: runeLiteVersion
     testImplementation 'junit:junit:4.13.2'
+    testImplementation 'com.squareup.okhttp3:mockwebserver:3.14.9'
 }
 
 tasks.withType(JavaCompile).configureEach {

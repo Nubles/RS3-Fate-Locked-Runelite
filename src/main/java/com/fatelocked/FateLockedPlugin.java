@@ -1,6 +1,8 @@
 package com.fatelocked;
 
 import com.google.gson.Gson;
+import com.fatelocked.events.FateEventOutbox;
+import com.fatelocked.events.FateEventRelayClient;
 import com.google.inject.Provides;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -118,6 +120,8 @@ public class FateLockedPlugin extends Plugin
 
     private ScheduledFuture<?> relayPollFuture;
     private volatile String lastRelayVersion;
+    private FateEventOutbox eventOutbox;
+    private FateEventRelayClient eventRelayClient;
     /** Configurable hotkey: re-import the bundle from the clipboard. */
     private final HotkeyListener reimportHotkey = new HotkeyListener(() -> config.reimportHotkey())
     {
@@ -264,6 +268,19 @@ public class FateLockedPlugin extends Plugin
     protected void startUp()
     {
         if (!DATA_DIR.exists()) DATA_DIR.mkdirs();
+        try
+        {
+            eventOutbox = new FateEventOutbox(gson,
+                DATA_DIR.toPath().resolve("event-outbox.json"));
+            eventRelayClient = new FateEventRelayClient(
+                okHttpClient, gson, configManager, config);
+        }
+        catch (IOException ex)
+        {
+            log.warn("Could not open Fate event outbox", ex);
+            eventOutbox = null;
+            eventRelayClient = null;
+        }
         overlayManager.add(worldMapOverlay);
         overlayManager.add(sceneOverlay);
         overlayManager.add(minimapOverlay);
@@ -1166,6 +1183,11 @@ public class FateLockedPlugin extends Plugin
         String base = config.relayUrl();
         if (code == null || code.trim().isEmpty() || base == null || base.trim().isEmpty()) return;
         final String trimmedCode = code.trim();
+        if (eventRelayClient != null && eventOutbox != null)
+        {
+            eventRelayClient.flush(base, trimmedCode, eventOutbox);
+            eventRelayClient.pollAcknowledgements(base, trimmedCode, eventOutbox);
+        }
 
         final Request request;
         try
