@@ -254,9 +254,27 @@ public interface FateLockedConfig extends Config
     }
 
     @ConfigSection(
+        name = "Guardian",
+        description = "Optional prevention for actions proven to break this run's rules",
+        position = 2
+    )
+    String guardianSection = "guardianSection";
+
+    @ConfigItem(
+        keyName = "strictMode",
+        name = "Strict Mode",
+        description = "Prevent actions that are certainly against this run's rules. Unknown actions are never prevented. Off by default.",
+        section = guardianSection,
+        position = 0
+    )
+    default boolean strictMode()
+    {
+        return false;
+    }
+    @ConfigSection(
         name = "Rendering",
         description = "How chunks are drawn on the map and in-world",
-        position = 2
+        position = 3
     )
     String renderingSection = "renderingSection";
 
