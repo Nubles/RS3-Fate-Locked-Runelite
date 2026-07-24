@@ -39,7 +39,8 @@ gameplay automation, and Online Sync remains explicit opt-in.
   locked chunk are traced in red, so you see exactly which way not to go.
 - **Durable Roll Inbox delivery (optional).** With Online sync enabled, supported skill levels, quests, combat tasks, Collection Log entries, clue caskets, bosses, and raids are written to a restart-safe local outbox and delivered with a stable event ID. The web app validates the event and queues it by category.
 - **Player-controlled rolls.** Detection never rolls. RuneLite has no Roll button; the player reviews the event and presses **Roll** in the web app. Ambiguous detections require review and blocked detections cannot expose Roll.
-- **Chat reminders (optional).** Short in-client nudges can still flag relevant completions without changing tracker state.- **Over-tier gear warning.** Warns (chat + HUD) when you're wearing an item
+- **Chat reminders (optional).** Short in-client nudges can still flag relevant completions without changing tracker state.
+- **Over-tier gear warning.** Warns (chat + HUD) when you're wearing an item
   above your unlocked equipment tier for that slot.
 - **Locked slayer-task warning.** Warns (chat + HUD) when your assigned slayer
   monster only lives in chunks you haven't unlocked.
@@ -124,3 +125,19 @@ never Unknown actions, and can be paused for 60 seconds from the side panel.
 Walking is always warning-only. Wrong-account, legacy, missing, invalid, or
 stale rules disable prevention. Every prevented click is explained immediately
 and recorded only in a bounded local troubleshooting log.
+### Expanded detectors
+
+All expanded detectors queue observations only and start in **Needs review**.
+After review, the player must still press **Roll** in the web app.
+
+| Detector | Signal | Current handling | Limitation |
+|---|---|---|---|
+| Slayer task | Remembered assignment + completion chat | Needs review | Choose the Slayer master/rate; the assignment must have been observed. |
+| Diary task | Diary tier progress transition | Needs review | Choose the completed task from that tier. |
+| Pet drop | New-pet chat + follower identity when available | Needs review | Unknown identities use a generic Pet drop review. |
+| Pest Control | Pest Control widget + exact win chat | Needs review | Both signals must occur within five seconds. |
+| Boss kill v2 | Checked encounter mapping + loot event | Needs review | Group presence is not treated as personal completion proof. |
+
+Unknown detector IDs and newer versions never become Ready automatically. The
+app may downgrade a detector at any time; promotion requires real reviewed
+playtest evidence and a separate policy-only release.

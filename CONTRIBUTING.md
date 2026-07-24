@@ -151,3 +151,19 @@ never Unknown actions, and can be paused for 60 seconds from the side panel.
 Walking is always warning-only. Wrong-account, legacy, missing, invalid, or
 stale rules disable prevention. Every prevented click is explained immediately
 and recorded only in a bounded local troubleshooting log.
+## Expanded detector safety
+
+The current confirmation-only contracts are `slayer-task-v1` v1,
+`diary-task-v1` v1, `pet-drop-v1` v1, `minigame-completion-v1` v1, and
+`boss-kill-v2` v2. Keep each detector narrow, deduplicated, and backed by a
+checked identity or two-signal correlation. Do not add broad completion regexes.
+
+The app policy can downgrade a known detector but cannot upgrade an unknown or
+newer version. Promotion requires 200 reviewed detections across five accounts
+and three RuneLite restarts, fewer than 0.5% false positives, at least 95%
+unchanged confirmations, zero duplicate rolls, and zero rolls without a player
+click. Detector implementation and confidence promotion are separate releases.
+
+Local playtest exports contain aggregate counts only. Never add account names,
+raw event evidence, chat text, relay credentials, exact timestamps, or full
+history to a quality report.
