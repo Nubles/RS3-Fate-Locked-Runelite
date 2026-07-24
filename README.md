@@ -114,3 +114,13 @@ the bundle file.
 
 Building from source, the bundle format, and other developer notes are in
 [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Strict Mode
+
+Strict Mode is off by default. It activates only when you check its config
+checkbox. It cancels only actions the current rules snapshot proves are locked,
+never Unknown actions, and can be paused for 60 seconds from the side panel.
+
+Walking is always warning-only. Wrong-account, legacy, missing, invalid, or
+stale rules disable prevention. Every prevented click is explained immediately
+and recorded only in a bounded local troubleshooting log.

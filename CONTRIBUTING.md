@@ -142,3 +142,12 @@ Travel, Farming, and Activities. Empty categories are omitted. Banks and shops
 show name plus status, quests show `✓`/`○`/`✕`, combat shows `✓`/`✕`, and only
 skilling/travel rows retain concise requirement details. The optional overlay
 uses the same view model and caps each category at five rows.
+## Strict Mode
+
+Strict Mode is off by default. It activates only when you check its config
+checkbox. It cancels only actions the current rules snapshot proves are locked,
+never Unknown actions, and can be paused for 60 seconds from the side panel.
+
+Walking is always warning-only. Wrong-account, legacy, missing, invalid, or
+stale rules disable prevention. Every prevented click is explained immediately
+and recorded only in a bounded local troubleshooting log.
