@@ -67,6 +67,21 @@
               "status": "ALLOWED",
               "targetKind": "SHOP"
             }
+          ],
+          "QUESTS": [
+            {
+              "key": "quest:cook's assistant",
+              "name": "Cook's Assistant",
+              "status": "NOT_READY"
+            }
+          ],
+          "COMBAT": [
+            {
+              "key": "combat:goblin",
+              "name": "Goblin",
+              "status": "LOCKED",
+              "targetKind": "NPC"
+            }
           ]
         },
         "counts": {

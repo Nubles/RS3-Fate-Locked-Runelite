@@ -6,6 +6,9 @@ import com.fatelocked.events.FateEventRelayClient;
 import com.fatelocked.events.FateEventFactory;
 import com.fatelocked.events.FateEvent;
 import com.fatelocked.events.EventConfidence;
+import com.fatelocked.rules.FateRuleEngine;
+import com.fatelocked.rules.PermissionStatus;
+import com.fatelocked.rules.RuleDecision;
 import com.fatelocked.detectors.BossRaidDetector;
 import com.fatelocked.detectors.CollectionLogDetector;
 import com.fatelocked.detectors.ClueCasketDetector;
@@ -547,15 +550,40 @@ public class FateLockedPlugin extends Plugin
      * block banking (server-authoritative), only flag it — same as the
      * locked-chunk warnings.
      */
+    private FateRuleEngine ruleEngine(FateLockedBundle source)
+    {
+        return new FateRuleEngine(source, currentAccountMatches(source), false);
+    }
+
+    private boolean currentAccountMatches(FateLockedBundle source)
+    {
+        String bound = source.getRules() == null
+            ? source.getState() == null ? null : source.getState().getLinkedAccount()
+            : source.getRules().getAccount();
+        if (bound == null || bound.trim().isEmpty()) return true;
+        Player local = client.getLocalPlayer();
+        String current = local == null ? null : local.getName();
+        return current != null && normName(bound).equals(normName(current));
+    }
     private void warnLockedBankIfNeeded()
     {
         Player local = client.getLocalPlayer();
         WorldPoint wp = local == null ? null : local.getWorldLocation();
         if (wp == null) return;
         CanonicalChunk chunk = CanonicalChunk.of(wp);
-        if (bundle.isBankUnlocked(chunk)) return;
-        String label = bundle.labelAt(chunk);
-        String where = label == null ? "This bank" : label + " bank";
+        String where;
+        if (bundle.isLegacyRules())
+        {
+            if (bundle.isBankUnlocked(chunk)) return;
+            String label = bundle.labelAt(chunk);
+            where = label == null ? "This bank" : label + " bank";
+        }
+        else
+        {
+            RuleDecision decision = ruleEngine(bundle).target(chunk, "BANK", "");
+            if (decision.getStatus() != PermissionStatus.LOCKED) return;
+            where = decision.getLabel();
+        }
         ChatMessageBuilder msg = new ChatMessageBuilder()
             .append(ChatColorType.HIGHLIGHT).append("[Fate Locked] ")
             .append(ChatColorType.NORMAL).append(where)
@@ -863,10 +891,12 @@ public class FateLockedPlugin extends Plugin
         if (config.tagLockedMenus())
         {
             WorldPoint target = menuTargetWorldPoint(entry);
-            if (target != null
-                && b.lockStateAt(CanonicalChunk.of(target)) == FateLockedBundle.LockState.LOCKED)
+            if (target != null)
             {
-                locked = true;
+                CanonicalChunk targetChunk = CanonicalChunk.of(target);
+                locked = b.isLegacyRules()
+                    ? b.lockStateAt(targetChunk) == FateLockedBundle.LockState.LOCKED
+                    : ruleEngine(b).entry(targetChunk).getStatus() == PermissionStatus.LOCKED;
             }
         }
 
@@ -875,9 +905,11 @@ public class FateLockedPlugin extends Plugin
         if (!locked && config.tagLockedTeleports())
         {
             CanonicalChunk dest = Teleports.destinationChunk(entry.getOption(), entry.getTarget());
-            if (dest != null && b.lockStateAt(dest) == FateLockedBundle.LockState.LOCKED)
+            if (dest != null)
             {
-                locked = true;
+                locked = b.isLegacyRules()
+                    ? b.lockStateAt(dest) == FateLockedBundle.LockState.LOCKED
+                    : ruleEngine(b).entry(dest).getStatus() == PermissionStatus.LOCKED;
             }
         }
 
