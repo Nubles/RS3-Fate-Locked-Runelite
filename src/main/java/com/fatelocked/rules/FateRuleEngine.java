@@ -12,7 +12,7 @@ import java.util.Optional;
  * Lookup-only access to the app-authored v4 rules. Unknown data always stays
  * Unknown; this layer never invents a lock from missing mappings.
  */
-public final class FateRuleEngine
+public class FateRuleEngine
 {
     private final FateLockedBundle bundle;
     private final boolean accountMatches;
