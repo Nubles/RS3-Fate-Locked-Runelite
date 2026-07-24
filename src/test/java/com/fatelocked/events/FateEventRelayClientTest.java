@@ -143,4 +143,24 @@ public class FateEventRelayClientTest
 
         assertTrue(!outbox.contains("evt-1"));
     }
+    @Test
+    public void disabledSyncMakesNoNetworkRequest() throws Exception
+    {
+        FateEventRelayClient disabled = new FateEventRelayClient(
+            new OkHttpClient(), gson, () -> false,
+            new FateEventRelayClient.TokenStore()
+            {
+                @Override
+                public String get(String key) { return null; }
+
+                @Override
+                public void put(String key, String value) { }
+            });
+
+        disabled.flush(server.url("/").toString(), "ABCD", outbox);
+        disabled.pollAcknowledgements(server.url("/").toString(), "ABCD", outbox);
+
+        assertEquals(null, server.takeRequest(200, TimeUnit.MILLISECONDS));
+        assertTrue(outbox.contains("evt-1"));
+    }
 }
