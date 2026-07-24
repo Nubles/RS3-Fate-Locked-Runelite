@@ -19,6 +19,15 @@ To run a local build without the Plugin Hub:
    load with that flag.
 3. The plugin appears in the plugin list as **Fate Locked Ironman**.
 
+## Plugin Hub release baseline
+
+The Hub currently pins `fdca20aad7ffcf159b62210f7492f110c185afee`; the
+next maintenance submission pins `f450bbd87cee74d26d24061d034368ad9f0c0c86`.
+Keep that maintenance PR limited to the current-chunk overlay, locked-bank
+warning, nearest bank/shop HUD lines, and aligned lock/free-area resolution. It
+must not add gameplay automation, and Online Sync stays opt-in and off by
+default.
+
 ## Bundle encodings
 
 The plugin's import accepts two forms of the same v3 bundle:
@@ -102,26 +111,59 @@ a server.
   payload as the clipboard).
 - **Outbound-only:** no inbound socket/server (Hub rule). The relay default URL
   is `relayUrl` config (override to self-host).
-- **Roll suggestions (same consent gate):** when the plugin detects a
-  completion that may be worth a roll (quest, diary-tier and
-  combat-achievement completions), it also
-  writes a tiny `{source, label, ts}` suggestion to `POST /r/<code>/suggest` —
-  a sub-resource of the same relay session, shown by the web app as a
-  dismissible reminder. Both `pushSuggestion()` calls sit behind the same
-  `config.onlineSync()` early-return as `pollRelay()`; no suggestion request is
-  ever made without consent. The sub-resource's write-token is persisted in
-  plugin config (keyed per sync code) so a client restart doesn't orphan the
-  suggestion array until its TTL expires.
-- **Privacy:** the payload is chunk-unlock + run state — **no account
-  credentials**. The relay stores it ephemerally (24h TTL), keyed by the random
-  pairing code; only that code can read it, and a private write-token (held in
-  the web app) is required to write.
+- **Durable detected events (same consent gate):** supported detections are persisted atomically in `event-outbox.json`. `POST /r/<code>/events` appends v1 envelopes idempotently by stable `eventId`; `GET /r/<code>/acks` returns terminal app decisions so the plugin can remove completed, dismissed, or duplicate events. Retries use the same ID across disconnects and restarts.
+- **Strict ownership:** detectors record facts only. The app checks run/account/revision/version gates, maps against canonical content and rates, reconciles factual progress without rolling, and exposes the only Roll button. Never call tracker roll logic from RuneLite.
+- **Legacy migration:** `/suggest` remains Worker-compatible for one release, but current app code does not poll it. New detectors must use the v1 event outbox rather than timestamp-only suggestions.
+- **Privacy:** bundle/state records expire after 24 hours. Event/ack records expire after seven days and contain the character name, run/revision, detector identity, event label/type, timestamps, confidence, and bounded evidence—no credentials, cookies, chat history, or arbitrary telemetry. Anyone with the random code can read its records; protected writes require the sub-resource token.
 - **Relay source + deploy docs:** `workers/fate-relay/` and `docs/online-relay.md`
   in the companion web-app repo
   (https://github.com/Nubles/OSRS-Fate-Locked).
+## v1 event contract
 
-## Ideas / future work
+`FateEvent` fields are: `protocolVersion`, `eventId`, `runId`, `account`, `runRevision`, `eventType`, `canonicalLabel`, `occurredAt`, `sessionSequence`, `bundleVersion`, `rulesVersion`, `contentVersion`, `detectorId`, `detectorVersion`, `confidence`, and bounded `evidence`.
 
-- Auto-log rolls from in-game item drops into the tracker's history.
-- Emit a hash-chained audit log of chunk transitions + events so the web app's
-  integrity layer can be verified against actual gameplay.
+Limits are 100 events per batch, 8 KiB per event, 32 evidence keys, and 256 characters per string. New detector versions require an app contract update; unknown IDs/versions are blocked rather than guessed.
+
+## Bundle v4 and compact chunk permissions
+
+Bundle v4 adds a canonical `rules` manifest while retaining the v3 root map
+fields for one compatibility release. The manifest carries run/account/version
+identity, every unlock family, bank-lock state, and category-first permission
+snapshots keyed by `cx,cy`.
+
+The plugin does not re-derive gameplay rules. It displays the app-authored
+status as **Available**, **Not ready**, **Locked**, or **Unknown**. Unknown is
+never treated as Locked. Malformed or future bundles are rejected atomically,
+leaving the last valid rules active; v1-v3 bundles continue through a compact
+Unknown fallback.
+
+The narrow panel orders categories as Skilling, Banks, Shops, Quests, Combat,
+Travel, Farming, and Activities. Empty categories are omitted. Banks and shops
+show name plus status, quests show `✓`/`○`/`✕`, combat shows `✓`/`✕`, and only
+skilling/travel rows retain concise requirement details. The optional overlay
+uses the same view model and caps each category at five rows.
+## Strict Mode
+
+Strict Mode is off by default. It activates only when you check its config
+checkbox. It cancels only actions the current rules snapshot proves are locked,
+never Unknown actions, and can be paused for 60 seconds from the side panel.
+
+Walking is always warning-only. Wrong-account, legacy, missing, invalid, or
+stale rules disable prevention. Every prevented click is explained immediately
+and recorded only in a bounded local troubleshooting log.
+## Expanded detector safety
+
+The current confirmation-only contracts are `slayer-task-v1` v1,
+`diary-task-v1` v1, `pet-drop-v1` v1, `minigame-completion-v1` v1, and
+`boss-kill-v2` v2. Keep each detector narrow, deduplicated, and backed by a
+checked identity or two-signal correlation. Do not add broad completion regexes.
+
+The app policy can downgrade a known detector but cannot upgrade an unknown or
+newer version. Promotion requires 200 reviewed detections across five accounts
+and three RuneLite restarts, fewer than 0.5% false positives, at least 95%
+unchanged confirmations, zero duplicate rolls, and zero rolls without a player
+click. Detector implementation and confidence promotion are separate releases.
+
+Local playtest exports contain aggregate counts only. Never add account names,
+raw event evidence, chat text, relay credentials, exact timestamps, or full
+history to a quality report.

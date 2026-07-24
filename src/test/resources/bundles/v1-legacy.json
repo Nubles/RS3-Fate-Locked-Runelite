@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "chunks": {
+    "Misthalin": [{"cx": 50, "cy": 50}],
+    "Asgarnia": [{"cx": 46, "cy": 52}]
+  },
+  "unlockedRegions": ["Asgarnia"]
+}

@@ -1,5 +1,7 @@
 package com.fatelocked;
 
+import com.fatelocked.panel.ChunkPanelViewModel;
+import com.fatelocked.rules.PermissionStatus;
 import net.runelite.api.Client;
 import net.runelite.api.Player;
 import net.runelite.api.coords.WorldPoint;
@@ -12,42 +14,25 @@ import javax.inject.Inject;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
-import java.util.List;
 
-/**
- * "In this chunk" — a togglable, draggable overlay that lists what the web
- * app's map chunk-info panel shows for the chunk the player is standing in:
- * its monsters, shops, farming patches and points of interest, plus whether
- * the chunk is available (unlocked) or off-limits. The persistent, in-world
- * twin of the world-map hover tooltip. Off by default (opt-in, draggable).
- */
+/** Optional draggable compact twin of the category-first side panel. */
 public class FateLockedContentOverlay extends OverlayPanel
 {
-    private static final Color GOLD  = new Color(245, 158, 11);
-    private static final Color GREEN = new Color(52, 211, 153);
-    private static final Color RED   = new Color(248, 113, 113);
-    private static final Color GRAY  = new Color(156, 163, 175);
-    private static final Color NAMES = new Color(209, 213, 219);
-
-    /** Category header colour, matching the app's sectioned chunk panel. */
-    private static Color categoryColor(String label)
-    {
-        switch (label)
-        {
-            case "Monsters": return new Color(251, 146, 60);  // combat orange
-            case "Shops":    return GOLD;
-            case "Farming":  return GREEN;
-            case "Points":   return new Color(96, 165, 250);  // POI blue
-            default:         return Color.WHITE;
-        }
-    }
+    private static final Color AMBER = new Color(245, 158, 11);
+    private static final Color GREEN = new Color(16, 185, 129);
+    private static final Color RED = new Color(239, 68, 68);
+    private static final Color GRAY = new Color(156, 163, 175);
+    private static final Color WHITE = new Color(229, 231, 235);
 
     private final Client client;
     private final FateLockedPlugin plugin;
     private final FateLockedConfig config;
 
     @Inject
-    FateLockedContentOverlay(Client client, FateLockedPlugin plugin, FateLockedConfig config)
+    FateLockedContentOverlay(
+        Client client,
+        FateLockedPlugin plugin,
+        FateLockedConfig config)
     {
         this.client = client;
         this.plugin = plugin;
@@ -59,72 +44,79 @@ public class FateLockedContentOverlay extends OverlayPanel
     @Override
     public Dimension render(Graphics2D graphics)
     {
-        if (!config.showChunkContentBox())
-        {
-            return null;
-        }
-
+        if (!config.showChunkContentBox()) return null;
         Player local = client.getLocalPlayer();
-        WorldPoint wp = local == null ? null : local.getWorldLocation();
-        if (wp == null)
-        {
-            return null;
-        }
+        WorldPoint point = local == null ? null : local.getWorldLocation();
+        if (point == null) return null;
 
         FateLockedBundle bundle = plugin.getBundle();
-        CanonicalChunk chunk = CanonicalChunk.of(wp);
-        String label = bundle.labelAt(chunk);
-        FateLockedBundle.LockState lock = bundle.lockStateAt(chunk);
+        CanonicalChunk chunk = CanonicalChunk.of(point);
+        ChunkPanelViewModel view = plugin.viewModelFor(bundle, chunk);
+        if (view == null) return null;
 
-        panelComponent.setPreferredSize(new Dimension(150, 0));
+        panelComponent.setPreferredSize(new Dimension(210, 0));
         panelComponent.getChildren().add(TitleComponent.builder()
-            .text("In this chunk")
-            .color(GOLD)
-            .build());
-
-        // Area name (wraps naturally under the title) then availability.
-        panelComponent.getChildren().add(LineComponent.builder()
-            .left(label == null ? "(" + chunk.getCx() + ", " + chunk.getCy() + ")" : label)
-            .leftColor(Color.WHITE)
+            .text(view.getName())
+            .color(AMBER)
             .build());
         panelComponent.getChildren().add(LineComponent.builder()
-            .left(lock == FateLockedBundle.LockState.UNLOCKED ? "Available"
-                : lock == FateLockedBundle.LockState.LOCKED ? "LOCKED — off-limits" : "Unknown area")
-            .leftColor(lock == FateLockedBundle.LockState.UNLOCKED ? GREEN
-                : lock == FateLockedBundle.LockState.LOCKED ? RED : GRAY)
+            .left((view.getRegion() == null ? "Unknown region" : view.getRegion())
+                + " · " + view.getCoordinates())
+            .leftColor(GRAY)
+            .build());
+        panelComponent.getChildren().add(LineComponent.builder()
+            .left(statusText(view.getEntryStatus()) + " · " + view.getFreshnessLabel())
+            .leftColor(statusColor(view.getEntryStatus()))
             .build());
 
-        // Content lines come pre-formatted as "Monsters: A, B, C" — split each
-        // into a coloured category header + its wrapped name list.
-        List<String> content = bundle.contentAt(chunk, 8);
-        if (content.isEmpty())
+        for (ChunkPanelViewModel.CategoryView category : view.getCategories())
         {
             panelComponent.getChildren().add(LineComponent.builder()
-                .left("No tracked content here.")
-                .leftColor(GRAY)
+                .left(category.getTitle())
+                .leftColor(AMBER)
                 .build());
-        }
-        else
-        {
-            for (String line : content)
+            int visible = Math.min(5, category.getRows().size());
+            for (int i = 0; i < visible; i++)
             {
-                int sep = line.indexOf(": ");
-                String cat = sep < 0 ? line : line.substring(0, sep);
-                String names = sep < 0 ? "" : line.substring(sep + 2);
+                ChunkPanelViewModel.RowView row = category.getRows().get(i);
                 panelComponent.getChildren().add(LineComponent.builder()
-                    .left(cat)
-                    .leftColor(categoryColor(cat))
+                    .left(row.getStatusGlyph() + " " + row.getName())
+                    .leftColor(statusColor(row.getStatus()))
                     .build());
-                if (!names.isEmpty())
-                {
-                    panelComponent.getChildren().add(LineComponent.builder()
-                        .left(names)
-                        .leftColor(NAMES)
-                        .build());
-                }
+            }
+            int more = category.getRows().size() - visible;
+            if (more > 0)
+            {
+                panelComponent.getChildren().add(LineComponent.builder()
+                    .left("+" + more + " more")
+                    .leftColor(GRAY)
+                    .build());
             }
         }
 
+        if (view.getCategories().isEmpty())
+        {
+            panelComponent.getChildren().add(LineComponent.builder()
+                .left("No mapped permissions here")
+                .leftColor(WHITE)
+                .build());
+        }
         return super.render(graphics);
+    }
+
+    private static Color statusColor(PermissionStatus status)
+    {
+        if (status == PermissionStatus.ALLOWED) return GREEN;
+        if (status == PermissionStatus.NOT_READY) return AMBER;
+        if (status == PermissionStatus.LOCKED) return RED;
+        return GRAY;
+    }
+
+    private static String statusText(PermissionStatus status)
+    {
+        if (status == PermissionStatus.ALLOWED) return "Available";
+        if (status == PermissionStatus.NOT_READY) return "Not ready";
+        if (status == PermissionStatus.LOCKED) return "Locked";
+        return "Unknown";
     }
 }

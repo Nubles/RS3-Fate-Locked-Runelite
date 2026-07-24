@@ -15,7 +15,7 @@ import java.util.Map;
  * teleport jewellery, and a few staple items — not exhaustive, but the teleports
  * a chunk-locked ironman actually leans on.
  */
-final class Teleports
+public final class Teleports
 {
     private Teleports() {}
 
@@ -163,7 +163,7 @@ final class Teleports
      * Destination chunk for a teleport menu entry, or null when the entry isn't a
      * recognised teleport or its destination is unknown.
      */
-    static CanonicalChunk destinationChunk(String option, String target)
+    public static CanonicalChunk destinationChunk(String option, String target)
     {
         String text = ((option == null ? "" : option) + " " + (target == null ? "" : target))
             .toLowerCase()

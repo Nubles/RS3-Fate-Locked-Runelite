@@ -2,6 +2,8 @@ package com.fatelocked;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
+import com.fatelocked.rules.ChunkPermissionSnapshot;
+import com.fatelocked.rules.RuneliteRulesManifest;
 import lombok.Getter;
 import lombok.Value;
 
@@ -18,6 +20,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.zip.GZIPInputStream;
 
@@ -67,6 +70,12 @@ public class FateLockedBundle
     private final String runId;
     private final String profileName;
     private final int version;
+    private final long runRevision;
+    private final String rulesVersion;
+    private final int contentVersion;
+    private final int detectorContractVersion;
+    /** Canonical v4 rules; null for legacy v1-v3 bundles. */
+    private final RuneliteRulesManifest rules;
 
     /** Continent name → set of canonical chunks owned by that continent. */
     private final Map<String, Set<CanonicalChunk>> regionChunks;
@@ -129,27 +138,45 @@ public class FateLockedBundle
                              Map<CanonicalChunk, String> chunkToRegion,
                              Map<CanonicalChunk, String> chunkToSubArea)
     {
-        this.runId = raw == null ? null : raw.runId;
+        this.rules = raw == null || raw.rules == null ? null : raw.rules.normalized();
+        this.runId = rules == null ? (raw == null ? null : raw.runId) : rules.getRunId();
         this.profileName = raw == null ? null : raw.profileName;
         this.version = raw == null ? 0 : raw.version;
+        this.runRevision = rules == null
+            ? (raw == null ? 0 : Math.max(0, raw.runRevision)) : rules.getRunRevision();
+        this.rulesVersion = rules == null
+            ? (raw == null || raw.rulesVersion == null ? "1" : raw.rulesVersion)
+            : rules.getRulesVersion();
+        this.contentVersion = rules == null
+            ? (raw == null ? 0 : Math.max(0, raw.contentVersion)) : rules.getContentVersion();
+        this.detectorContractVersion = rules == null
+            ? (raw == null ? 0 : Math.max(0, raw.detectorContractVersion))
+            : rules.getDetectorContractVersion();
         this.regionChunks = regionChunks;
         this.subAreaChunks = subAreaChunks;
         this.regionGroups = raw == null || raw.regionGroups == null
             ? Collections.<String, List<String>>emptyMap() : raw.regionGroups;
-        this.unlockedRegions = raw == null || raw.unlockedRegions == null
-            ? Collections.<String>emptySet() : new HashSet<>(raw.unlockedRegions);
+        List<String> manifestRegions = rules == null ? null : rules.getUnlocks().getRegions();
+        this.unlockedRegions = manifestRegions != null
+            ? new HashSet<>(manifestRegions)
+            : raw == null || raw.unlockedRegions == null
+                ? Collections.<String>emptySet() : new HashSet<>(raw.unlockedRegions);
 
         // Chunked mode: unlockedChunks' mere presence (even as an empty list)
         // marks this as a Chunked bundle — see the class javadoc. Offsets are
         // applied the same way index() applies them to chunks/subAreaChunks,
         // for consistency, even though current exports always use {0,0}.
-        if (raw != null && raw.unlockedChunks != null)
+        List<String> manifestChunks = rules != null && "chunked".equals(rules.getGameModeId())
+            ? rules.getUnlocks().getChunks() : null;
+        List<String> wireChunks = manifestChunks != null
+            ? manifestChunks : (raw == null ? null : raw.unlockedChunks);
+        if (wireChunks != null)
         {
             int offsetCx = raw.chunkOffset != null ? raw.chunkOffset.cx : 0;
             int offsetCy = raw.chunkOffset != null ? raw.chunkOffset.cy : 0;
             Set<CanonicalChunk> parsed = new HashSet<>();
             parsed.add(CHUNKED_START);
-            for (String key : raw.unlockedChunks)
+            for (String key : wireChunks)
             {
                 CanonicalChunk c = parseChunkKey(key);
                 if (c != null) parsed.add(new CanonicalChunk(c.getCx() - offsetCx, c.getCy() - offsetCy));
@@ -161,11 +188,13 @@ public class FateLockedBundle
             this.chunkedUnlockedSet = null;
         }
 
-        this.bankLocks = raw != null && raw.bankLocks;
+        this.bankLocks = rules != null ? rules.isBankLocks() : raw != null && raw.bankLocks;
         Set<String> banks = new HashSet<>();
-        if (raw != null && raw.unlockedBanks != null)
+        List<String> bankSource = rules != null
+            ? rules.getUnlocks().getBanks() : raw == null ? null : raw.unlockedBanks;
+        if (bankSource != null)
         {
-            for (String id : raw.unlockedBanks) if (id != null) banks.add(id.trim());
+            for (String id : bankSource) if (id != null) banks.add(id.trim());
         }
         this.unlockedBanks = banks;
 
@@ -324,6 +353,15 @@ public class FateLockedBundle
             ? inflate(json.trim().substring(GZ_PREFIX.length())) : json;
 
         RawBundle raw = gson.fromJson(text, RawBundle.class);
+        if (raw != null && raw.version > 4)
+        {
+            throw new IllegalArgumentException("Unsupported future bundle version " + raw.version);
+        }
+        if (raw != null && raw.version == 4
+            && (raw.chunks == null || raw.rules == null || !raw.rules.hasRequiredFields()))
+        {
+            throw new IllegalArgumentException("Bundle v4 is missing required rules fields");
+        }
         if (raw == null || raw.chunks == null)
         {
             return empty();
@@ -364,6 +402,20 @@ public class FateLockedBundle
         }
     }
 
+    /** Canonical v4 permissions at a chunk; absent for legacy or unauthored rules. */
+    public Optional<ChunkPermissionSnapshot> permissionsAt(CanonicalChunk chunk)
+    {
+        if (rules == null || chunk == null) return Optional.empty();
+        return Optional.ofNullable(rules.getChunks().get(
+            chunk.getCx() + "," + chunk.getCy()));
+    }
+
+    /** True when the bundle relies on the v1-v3 root-field rules. */
+    public boolean isLegacyRules()
+    {
+        return rules == null;
+    }
+
     // ---- queries ---------------------------------------------------------------
 
     /** Continent the chunk belongs to, or null when unauthored. */
@@ -382,6 +434,22 @@ public class FateLockedBundle
      * "What's here" for a chunk as display lines ("Monsters: …", "Shops: …",
      * "Farming: …", "Points: …"); empty when none/unknown.
      */
+    /** Compact raw legacy categories for v1-v3 fallback rendering. */
+    public Map<String, List<String>> legacyContentAt(CanonicalChunk chunk)
+    {
+        if (chunk == null) return Collections.emptyMap();
+        Map<String, List<String>> source = chunkContent.get(
+            chunk.getCx() + "," + chunk.getCy());
+        if (source == null || source.isEmpty()) return Collections.emptyMap();
+        Map<String, List<String>> copy = new HashMap<>();
+        for (Map.Entry<String, List<String>> entry : source.entrySet())
+        {
+            copy.put(entry.getKey(), entry.getValue() == null
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(entry.getValue())));
+        }
+        return Collections.unmodifiableMap(copy);
+    }
     public List<String> contentAt(CanonicalChunk chunk)
     {
         return contentAt(chunk, Integer.MAX_VALUE);
@@ -669,6 +737,10 @@ public class FateLockedBundle
         int version;
         String runId;
         String profileName;
+        long runRevision;
+        String rulesVersion;
+        int contentVersion;
+        int detectorContractVersion;
         RawChunk chunkOffset;
         Map<String, List<RawChunk>> chunks;
         Map<String, List<RawChunk>> subAreaChunks;
@@ -682,6 +754,7 @@ public class FateLockedBundle
         Map<String, Integer> itemTiers;
         Map<String, List<RawChunk>> slayerChunks;
         RunState state;
+        RuneliteRulesManifest rules;
     }
 
     private static final class RawChunk

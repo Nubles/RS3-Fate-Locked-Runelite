@@ -6,6 +6,15 @@ RuneLite's world map and main game view, shows your live run state in-game, and
 warns you — by chat, sound, screen flash, and right-click tags — before you
 touch content you haven't unlocked yet.
 
+## Release status
+
+Plugin Hub currently pins `fdca20aad7ffcf159b62210f7492f110c185afee`.
+The next maintenance submission pins
+`f450bbd87cee74d26d24061d034368ad9f0c0c86` and adds the optional
+current-chunk content overlay, individually locked-bank warning, nearest usable
+bank/shop HUD lines, and web-app-aligned lock/free-area resolution. It adds no
+gameplay automation, and Online Sync remains explicit opt-in.
+
 ## What it does
 
 - **In-game HUD.** Always-visible overlay with your keys (standard · Omni ·
@@ -28,13 +37,9 @@ touch content you haven't unlocked yet.
   game view and tinted on the minimap with the same color coding.
 - **Locked-border highlight.** The edges of your current chunk that border a
   locked chunk are traced in red, so you see exactly which way not to go.
-- **Roll reminders.** A chat nudge on level-up, quest, achievement-diary,
-  combat-achievement and collection-log completion — plus boss kills and raid
-  chests (via loot events) — that it may be worth a roll in the tracker.
-- **Roll suggestions in the web app.** With online sync on, quest, diary and
-  combat-achievement completions are also pushed to the tracker, where they appear as a toast and a
-  persistent list in the **Sync & Roll** tab with a *Take me there* jump to
-  the right roll — the plugin never rolls on your behalf.
+- **Durable Roll Inbox delivery (optional).** With Online sync enabled, supported skill levels, quests, combat tasks, Collection Log entries, clue caskets, bosses, and raids are written to a restart-safe local outbox and delivered with a stable event ID. The web app validates the event and queues it by category.
+- **Player-controlled rolls.** Detection never rolls. RuneLite has no Roll button; the player reviews the event and presses **Roll** in the web app. Ambiguous detections require review and blocked detections cannot expose Roll.
+- **Chat reminders (optional).** Short in-client nudges can still flag relevant completions without changing tracker state.
 - **Over-tier gear warning.** Warns (chat + HUD) when you're wearing an item
   above your unlocked equipment tier for that slot.
 - **Locked slayer-task warning.** Warns (chat + HUD) when your assigned slayer
@@ -53,9 +58,7 @@ touch content you haven't unlocked yet.
   (Auto-Roll). The HUD shows that account — green when it matches the logged-in
   character, red ⚠ when it doesn't — and a one-time chat warning fires per login
   if you're on the wrong character.
-- **Side panel.** Run stats, current location, and an **Allowed / Forbidden /
-  Unknown** breakdown of every unlocked area, every authored-but-locked area,
-  and how many map chunks sit in unnamed terrain.
+- **Side panel.** Run stats, current location, an **Allowed / Forbidden / Unknown** area breakdown, and Roll Inbox health: queued detections, items needing review, active warnings, last successful sync, and an **Open Roll Inbox** link.
 - **Chat on chunk entry.** One-liner per chunk boundary: coords, area
   ("Falador · Asgarnia"), and status.
 
@@ -80,13 +83,19 @@ downloads it — then get it into the plugin whichever way suits you:
 - **Online sync** *(optional).* In the web app, enable **Online sync** to get a
   pairing code; paste it into the plugin's **Online sync code**. Your run then
   syncs over the internet (no clipboard/files) — handy when the game and the web
-  app are on different machines. Outbound-only, ephemeral (24h); see
+  app are on different machines. Outbound-only; bundles expire after 24 hours and detected-event records after seven days. See
   [CONTRIBUTING.md](CONTRIBUTING.md).
 - **Drop the file in the data folder.** Move the downloaded
   `fate-locked-bundle-*.json` into `~/.runelite/fate-locked/` (`%USERPROFILE%\.runelite\fate-locked\`
   on Windows); the plugin loads the newest one there and hot-reloads on change.
   (The plugin only reads from this folder — a RuneLite plugin can't read your
   Downloads or arbitrary paths.)
+
+### Roll Inbox ownership and privacy
+
+Online sync is a checkbox and defaults to **off**. When enabled, RuneLite detects and queues; the web app validates and rolls; the relay only stores bounded records. Event delivery includes the character name, run/revision, event label/type, detector version, timestamp, confidence, and small evidence map. It does not include credentials, cookies, chat history, or an inventory dump.
+
+The plugin retries the same stable event ID across restarts and temporary failures. The app posts `COMPLETED`, `DISMISSED`, or `DUPLICATE`; only then does RuneLite remove that event from its outbox. Event and acknowledgement records expire after seven days.
 
 ## Configuration
 
@@ -106,3 +115,29 @@ the bundle file.
 
 Building from source, the bundle format, and other developer notes are in
 [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Strict Mode
+
+Strict Mode is off by default. It activates only when you check its config
+checkbox. It cancels only actions the current rules snapshot proves are locked,
+never Unknown actions, and can be paused for 60 seconds from the side panel.
+
+Walking is always warning-only. Wrong-account, legacy, missing, invalid, or
+stale rules disable prevention. Every prevented click is explained immediately
+and recorded only in a bounded local troubleshooting log.
+### Expanded detectors
+
+All expanded detectors queue observations only and start in **Needs review**.
+After review, the player must still press **Roll** in the web app.
+
+| Detector | Signal | Current handling | Limitation |
+|---|---|---|---|
+| Slayer task | Remembered assignment + completion chat | Needs review | Choose the Slayer master/rate; the assignment must have been observed. |
+| Diary task | Diary tier progress transition | Needs review | Choose the completed task from that tier. |
+| Pet drop | New-pet chat + follower identity when available | Needs review | Unknown identities use a generic Pet drop review. |
+| Pest Control | Pest Control widget + exact win chat | Needs review | Both signals must occur within five seconds. |
+| Boss kill v2 | Checked encounter mapping + loot event | Needs review | Group presence is not treated as personal completion proof. |
+
+Unknown detector IDs and newer versions never become Ready automatically. The
+app may downgrade a detector at any time; promotion requires real reviewed
+playtest evidence and a separate policy-only release.
