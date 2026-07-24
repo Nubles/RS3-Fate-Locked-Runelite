@@ -114,7 +114,8 @@ a server.
 - **Durable detected events (same consent gate):** supported detections are persisted atomically in `event-outbox.json`. `POST /r/<code>/events` appends v1 envelopes idempotently by stable `eventId`; `GET /r/<code>/acks` returns terminal app decisions so the plugin can remove completed, dismissed, or duplicate events. Retries use the same ID across disconnects and restarts.
 - **Strict ownership:** detectors record facts only. The app checks run/account/revision/version gates, maps against canonical content and rates, reconciles factual progress without rolling, and exposes the only Roll button. Never call tracker roll logic from RuneLite.
 - **Legacy migration:** `/suggest` remains Worker-compatible for one release, but current app code does not poll it. New detectors must use the v1 event outbox rather than timestamp-only suggestions.
-- **Privacy:** bundle/state records expire after 24 hours. Event/ack records expire after seven days and contain the character name, run/revision, detector identity, event label/type, timestamps, confidence, and bounded evidence—no credentials, cookies, chat history, or arbitrary telemetry. Anyone with the random code can read its records; protected writes require the sub-resource token.- **Relay source + deploy docs:** `workers/fate-relay/` and `docs/online-relay.md`
+- **Privacy:** bundle/state records expire after 24 hours. Event/ack records expire after seven days and contain the character name, run/revision, detector identity, event label/type, timestamps, confidence, and bounded evidence—no credentials, cookies, chat history, or arbitrary telemetry. Anyone with the random code can read its records; protected writes require the sub-resource token.
+- **Relay source + deploy docs:** `workers/fate-relay/` and `docs/online-relay.md`
   in the companion web-app repo
   (https://github.com/Nubles/OSRS-Fate-Locked).
 ## v1 event contract
@@ -122,3 +123,22 @@ a server.
 `FateEvent` fields are: `protocolVersion`, `eventId`, `runId`, `account`, `runRevision`, `eventType`, `canonicalLabel`, `occurredAt`, `sessionSequence`, `bundleVersion`, `rulesVersion`, `contentVersion`, `detectorId`, `detectorVersion`, `confidence`, and bounded `evidence`.
 
 Limits are 100 events per batch, 8 KiB per event, 32 evidence keys, and 256 characters per string. New detector versions require an app contract update; unknown IDs/versions are blocked rather than guessed.
+
+## Bundle v4 and compact chunk permissions
+
+Bundle v4 adds a canonical `rules` manifest while retaining the v3 root map
+fields for one compatibility release. The manifest carries run/account/version
+identity, every unlock family, bank-lock state, and category-first permission
+snapshots keyed by `cx,cy`.
+
+The plugin does not re-derive gameplay rules. It displays the app-authored
+status as **Available**, **Not ready**, **Locked**, or **Unknown**. Unknown is
+never treated as Locked. Malformed or future bundles are rejected atomically,
+leaving the last valid rules active; v1-v3 bundles continue through a compact
+Unknown fallback.
+
+The narrow panel orders categories as Skilling, Banks, Shops, Quests, Combat,
+Travel, Farming, and Activities. Empty categories are omitted. Banks and shops
+show name plus status, quests show `✓`/`○`/`✕`, combat shows `✓`/`✕`, and only
+skilling/travel rows retain concise requirement details. The optional overlay
+uses the same view model and caps each category at five rows.
