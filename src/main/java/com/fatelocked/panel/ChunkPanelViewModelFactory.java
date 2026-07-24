@@ -79,6 +79,39 @@ public final class ChunkPanelViewModelFactory
                     id, TITLES.get(id), rows));
             }
         }
+        else if (accountMatches && bundle.isLegacyRules())
+        {
+            Map<String, List<String>> legacy = bundle.legacyContentAt(chunk);
+            Map<String, String> legacyCategories = new LinkedHashMap<>();
+            legacyCategories.put("mon", "COMBAT");
+            legacyCategories.put("shop", "SHOPS");
+            legacyCategories.put("farm", "FARMING");
+            legacyCategories.put("poi", "ACTIVITIES");
+            for (String id : ORDER)
+            {
+                List<ChunkPanelViewModel.RowView> rows = new ArrayList<>();
+                for (Map.Entry<String, String> mapping : legacyCategories.entrySet())
+                {
+                    if (!id.equals(mapping.getValue())) continue;
+                    for (String name : legacy.getOrDefault(
+                        mapping.getKey(), Collections.emptyList()))
+                    {
+                        rows.add(new ChunkPanelViewModel.RowView(
+                            name,
+                            PermissionStatus.UNKNOWN,
+                            "?",
+                            statusText(id, PermissionStatus.UNKNOWN),
+                            null));
+                        unknown++;
+                    }
+                }
+                if (!rows.isEmpty())
+                {
+                    categories.add(new ChunkPanelViewModel.CategoryView(
+                        id, TITLES.get(id), rows));
+                }
+            }
+        }
 
         String name = snapshot == null ? bundle.labelAt(chunk) : snapshot.getName();
         if (name == null || name.trim().isEmpty()) name = "Unknown chunk";

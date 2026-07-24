@@ -9,6 +9,8 @@ import com.fatelocked.events.EventConfidence;
 import com.fatelocked.rules.FateRuleEngine;
 import com.fatelocked.rules.PermissionStatus;
 import com.fatelocked.rules.RuleDecision;
+import com.fatelocked.panel.ChunkPanelViewModel;
+import com.fatelocked.panel.ChunkPanelViewModelFactory;
 import com.fatelocked.detectors.BossRaidDetector;
 import com.fatelocked.detectors.CollectionLogDetector;
 import com.fatelocked.detectors.ClueCasketDetector;
@@ -156,6 +158,8 @@ public class FateLockedPlugin extends Plugin
     };
 
     @Getter private volatile FateLockedBundle bundle = FateLockedBundle.empty();
+    private final ChunkPanelViewModelFactory chunkPanelFactory =
+        new ChunkPanelViewModelFactory();
 
     /** How long the locked-entry screen flash lasts. */
     public static final long LOCKED_FLASH_MS = 1600;
@@ -544,12 +548,16 @@ public class FateLockedPlugin extends Plugin
         }
     }
 
-    /**
-     * One-off advisory when the player opens a bank/deposit box in a chunk
-     * whose bank they haven't rolled (bank-locked runs only). The plugin can't
-     * block banking (server-authoritative), only flag it — same as the
-     * locked-chunk warnings.
-     */
+    /** Build the shared compact model for the current chunk. */
+    ChunkPanelViewModel viewModelFor(FateLockedBundle source, CanonicalChunk chunk)
+    {
+        if (chunk == null) return null;
+        return chunkPanelFactory.create(
+            source,
+            chunk,
+            currentAccountMatches(source),
+            config.onlineSync() ? lastTrackerSync : null);
+    }
     private FateRuleEngine ruleEngine(FateLockedBundle source)
     {
         return new FateRuleEngine(source, currentAccountMatches(source), false);
@@ -565,6 +573,7 @@ public class FateLockedPlugin extends Plugin
         String current = local == null ? null : local.getName();
         return current != null && normName(bound).equals(normName(current));
     }
+/** Advisory when a bank is explicitly locked by the shared rules. */
     private void warnLockedBankIfNeeded()
     {
         Player local = client.getLocalPlayer();
@@ -857,7 +866,7 @@ public class FateLockedPlugin extends Plugin
         boolean changed = !current.equals(lastChunk);
         if (changed)
         {
-            panel.update(b, current, label, unlocked);
+            panel.update(b, viewModelFor(b, current));
             if (config.chatOnEnter())
             {
                 announceEntry(current, label, unlocked);
@@ -1085,7 +1094,7 @@ public class FateLockedPlugin extends Plugin
         catch (RuntimeException ex)
         {
             log.warn("Pasted bundle could not be parsed: {}", ex.getMessage());
-            panel.flashStatus("import failed — invalid JSON", false);
+            panel.flashStatus("import failed — using previous rules", false);
         }
     }
 
@@ -1098,10 +1107,7 @@ public class FateLockedPlugin extends Plugin
         {
             current = CanonicalChunk.of(local.getWorldLocation());
         }
-        String label = current == null ? null : bundle.labelAt(current);
-        boolean unlocked = current != null
-            && bundle.lockStateAt(current) == FateLockedBundle.LockState.UNLOCKED;
-        panel.update(bundle, current, label, unlocked);
+        panel.update(bundle, viewModelFor(bundle, current));
         // A fresh bundle may change unlocked tiers / areas — re-check worn gear,
         // the current slayer task, and the world-map markers.
         recomputeOverTierGear();

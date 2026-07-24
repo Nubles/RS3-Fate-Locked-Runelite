@@ -434,6 +434,22 @@ public class FateLockedBundle
      * "What's here" for a chunk as display lines ("Monsters: …", "Shops: …",
      * "Farming: …", "Points: …"); empty when none/unknown.
      */
+    /** Compact raw legacy categories for v1-v3 fallback rendering. */
+    public Map<String, List<String>> legacyContentAt(CanonicalChunk chunk)
+    {
+        if (chunk == null) return Collections.emptyMap();
+        Map<String, List<String>> source = chunkContent.get(
+            chunk.getCx() + "," + chunk.getCy());
+        if (source == null || source.isEmpty()) return Collections.emptyMap();
+        Map<String, List<String>> copy = new HashMap<>();
+        for (Map.Entry<String, List<String>> entry : source.entrySet())
+        {
+            copy.put(entry.getKey(), entry.getValue() == null
+                ? Collections.emptyList()
+                : Collections.unmodifiableList(new ArrayList<>(entry.getValue())));
+        }
+        return Collections.unmodifiableMap(copy);
+    }
     public List<String> contentAt(CanonicalChunk chunk)
     {
         return contentAt(chunk, Integer.MAX_VALUE);
