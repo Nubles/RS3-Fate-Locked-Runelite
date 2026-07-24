@@ -11,6 +11,8 @@ import com.fatelocked.rules.PermissionStatus;
 import com.fatelocked.rules.RuleDecision;
 import com.fatelocked.panel.ChunkPanelViewModel;
 import com.fatelocked.panel.ChunkPanelViewModelFactory;
+import com.fatelocked.guardian.GuardedAction;
+import com.fatelocked.guardian.GuardedActionFactory;
 import com.fatelocked.detectors.BossRaidDetector;
 import com.fatelocked.detectors.CollectionLogDetector;
 import com.fatelocked.detectors.ClueCasketDetector;
@@ -160,6 +162,7 @@ public class FateLockedPlugin extends Plugin
     @Getter private volatile FateLockedBundle bundle = FateLockedBundle.empty();
     private final ChunkPanelViewModelFactory chunkPanelFactory =
         new ChunkPanelViewModelFactory();
+    private final GuardedActionFactory guardedActionFactory = new GuardedActionFactory();
 
     /** How long the locked-entry screen flash lasts. */
     public static final long LOCKED_FLASH_MS = 1600;
@@ -893,35 +896,25 @@ public class FateLockedPlugin extends Plugin
         FateLockedBundle b = bundle;
         if (b.getRegionChunks().isEmpty()) return;
 
-        MenuEntry entry = event.getMenuEntry();
+MenuEntry entry = event.getMenuEntry();
+        GuardedAction action = guardedActionFactory.from(entry, client);
         boolean locked = false;
-
-        // Tile-based: NPC/object/ground/walk entries standing in a locked chunk.
-        if (config.tagLockedMenus())
+        if (config.tagLockedMenus()
+            && action.getChunk() != null
+            && action.getKind() != GuardedAction.Kind.TELEPORT)
         {
-            WorldPoint target = menuTargetWorldPoint(entry);
-            if (target != null)
-            {
-                CanonicalChunk targetChunk = CanonicalChunk.of(target);
-                locked = b.isLegacyRules()
-                    ? b.lockStateAt(targetChunk) == FateLockedBundle.LockState.LOCKED
-                    : ruleEngine(b).entry(targetChunk).getStatus() == PermissionStatus.LOCKED;
-            }
+            locked = b.isLegacyRules()
+                ? b.lockStateAt(action.getChunk()) == FateLockedBundle.LockState.LOCKED
+                : ruleEngine(b).entry(action.getChunk()).getStatus() == PermissionStatus.LOCKED;
         }
-
-        // Name-based: teleports (spells/jewellery/tablets) whose destination chunk
-        // is locked — these carry no world tile, so resolve by name.
-        if (!locked && config.tagLockedTeleports())
+        if (!locked && config.tagLockedTeleports()
+            && action.getKind() == GuardedAction.Kind.TELEPORT
+            && action.getChunk() != null)
         {
-            CanonicalChunk dest = Teleports.destinationChunk(entry.getOption(), entry.getTarget());
-            if (dest != null)
-            {
-                locked = b.isLegacyRules()
-                    ? b.lockStateAt(dest) == FateLockedBundle.LockState.LOCKED
-                    : ruleEngine(b).entry(dest).getStatus() == PermissionStatus.LOCKED;
-            }
+            locked = b.isLegacyRules()
+                ? b.lockStateAt(action.getChunk()) == FateLockedBundle.LockState.LOCKED
+                : ruleEngine(b).entry(action.getChunk()).getStatus() == PermissionStatus.LOCKED;
         }
-
         if (!locked) return;
         String t = entry.getTarget();
         String base = t == null ? "" : t;
