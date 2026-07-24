@@ -33,7 +33,7 @@
       "chunks": [],
       "skills": {},
       "levels": {},
-      "equipment": {},
+      "equipment": {"Weapon": 5},
       "banks": ["12850"],
       "merchants": ["General Stores"],
       "bosses": [],
@@ -45,6 +45,7 @@
       "slayer": [],
       "quests": []
     },
+"itemRules": {"4151": {"tier": 7, "slot": "Weapon"}},
     "chunks": {
       "50,50": {
         "chunkKey": "50,50",

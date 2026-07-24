@@ -72,6 +72,25 @@ public final class FateRuleEngine
         return unknown(targetName);
     }
 
+    public RuleDecision equipment(int itemId)
+    {
+        RuleDecision trust = trustDecision();
+        if (trust != null) return trust;
+        RuneliteRulesManifest.ItemRule item = bundle.getRules()
+            .getItemRules().get(String.valueOf(itemId));
+        if (item == null || item.getSlot() == null || item.getSlot().trim().isEmpty())
+        {
+            return unknown("Item " + itemId);
+        }
+        Integer unlocked = bundle.getRules().getUnlocks()
+            .getEquipment().get(item.getSlot());
+        if (unlocked == null) return unknown("Item " + itemId);
+        PermissionStatus status = item.getTier() > unlocked
+            ? PermissionStatus.LOCKED : PermissionStatus.ALLOWED;
+        String reason = "T" + item.getTier() + "; " + item.getSlot()
+            + " is unlocked to T" + unlocked;
+        return new RuleDecision(status, "Item " + itemId, reason);
+    }
     private RuleDecision trustDecision()
     {
         if (!accountMatches)

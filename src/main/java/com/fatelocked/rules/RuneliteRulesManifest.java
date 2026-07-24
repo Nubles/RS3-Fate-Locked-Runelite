@@ -22,6 +22,7 @@ public final class RuneliteRulesManifest
     private String exportedAt;
     private boolean bankLocks;
     private Unlocks unlocks;
+    private Map<String, ItemRule> itemRules;
     private Map<String, ChunkPermissionSnapshot> chunks;
 
     public RuneliteRulesManifest normalized()
@@ -37,6 +38,18 @@ public final class RuneliteRulesManifest
         copy.exportedAt = exportedAt;
         copy.bankLocks = bankLocks;
         copy.unlocks = unlocks == null ? new Unlocks().normalized() : unlocks.normalized();
+        Map<String, ItemRule> normalizedItems = new TreeMap<>();
+        if (itemRules != null)
+        {
+            for (Map.Entry<String, ItemRule> entry : itemRules.entrySet())
+            {
+                if (entry.getValue() != null)
+                {
+                    normalizedItems.put(entry.getKey(), entry.getValue().normalized());
+                }
+            }
+        }
+        copy.itemRules = Collections.unmodifiableMap(normalizedItems);
 
         Map<String, ChunkPermissionSnapshot> normalizedChunks = new LinkedHashMap<>();
         if (chunks != null)
@@ -64,6 +77,20 @@ public final class RuneliteRulesManifest
             && unlocks != null && chunks != null;
     }
 
+    @Getter
+    public static final class ItemRule
+    {
+        private int tier;
+        private String slot;
+
+        private ItemRule normalized()
+        {
+            ItemRule copy = new ItemRule();
+            copy.tier = Math.max(0, tier);
+            copy.slot = slot;
+            return copy;
+        }
+    }
     @Getter
     public static final class Unlocks
     {

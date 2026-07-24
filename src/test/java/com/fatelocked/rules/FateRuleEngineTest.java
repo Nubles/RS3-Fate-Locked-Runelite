@@ -40,6 +40,10 @@ public class FateRuleEngineTest
             engine.target(chunk, "NPC", "Goblin").getStatus());
         assertEquals(PermissionStatus.UNKNOWN,
             engine.target(chunk, "OBJECT", "Unmapped").getStatus());
+        assertEquals(PermissionStatus.LOCKED,
+            engine.equipment(4151).getStatus());
+        assertEquals(PermissionStatus.UNKNOWN,
+            engine.equipment(999999).getStatus());
         assertNull(engine.target(chunk, "OBJECT", "Unmapped").getReason());
     }
 
