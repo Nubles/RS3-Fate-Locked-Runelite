@@ -52,6 +52,15 @@
         "region": "Misthalin",
         "entry": "ALLOWED",
         "categories": {
+"SKILLING": [
+            {
+              "key": "skill:oak tree",
+              "name": "Oak tree",
+              "status": "ALLOWED",
+              "detail": "Woodcutting 30/15 · cap 50",
+              "targetKind": "OBJECT"
+            }
+          ],
           "BANKS": [
             {
               "key": "bank:12850",
@@ -85,7 +94,7 @@
           ]
         },
         "counts": {
-          "allowed": 2,
+          "allowed": 3,
           "notReady": 0,
           "locked": 0,
           "unknown": 0
