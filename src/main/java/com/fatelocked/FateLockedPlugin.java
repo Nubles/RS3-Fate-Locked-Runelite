@@ -985,14 +985,15 @@ public class FateLockedPlugin extends Plugin
         }
         try
         {
-            bundle = FateLockedBundle.loadFromFile(gson, file);
+            FateLockedBundle parsed = FateLockedBundle.loadFromFile(gson, file);
+            bundle = parsed;
             log.info("Fate Locked bundle loaded from {}: {} regions, {} unlocked",
-                file, bundle.getRegionChunks().size(), bundle.getUnlockedRegions().size());
+                file, parsed.getRegionChunks().size(), parsed.getUnlockedRegions().size());
         }
         catch (IOException | RuntimeException ex)
         {
             log.warn("Failed to load bundle at {}: {}", file, ex.getMessage());
-            bundle = FateLockedBundle.empty();
+            panel.flashStatus("import failed — using previous rules", false);
         }
         refreshPanel();
     }

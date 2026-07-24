@@ -1,0 +1,81 @@
+{
+  "version": 4,
+  "runId": "run-1",
+  "runRevision": 41,
+  "rulesVersion": "1",
+  "contentVersion": 1,
+  "detectorContractVersion": 1,
+  "chunks": {
+    "Misthalin": [{"cx": 50, "cy": 50}]
+  },
+  "subAreaChunks": {
+    "Lumbridge": [{"cx": 50, "cy": 50}]
+  },
+  "regionGroups": {
+    "Misthalin": ["Lumbridge"]
+  },
+  "unlockedRegions": ["Lumbridge"],
+  "state": {
+    "linkedAccount": "Nubles"
+  },
+  "rules": {
+    "rulesVersion": "1",
+    "contentVersion": 1,
+    "detectorContractVersion": 1,
+    "runId": "run-1",
+    "runRevision": 41,
+    "account": "Nubles",
+    "gameModeId": "vanilla",
+    "exportedAt": "2026-07-24T10:00:00.000Z",
+    "bankLocks": true,
+    "unlocks": {
+      "regions": ["Lumbridge"],
+      "chunks": [],
+      "skills": {},
+      "levels": {},
+      "equipment": {},
+      "banks": ["12850"],
+      "merchants": ["General Stores"],
+      "bosses": [],
+      "minigames": [],
+      "mobility": [],
+      "arcana": [],
+      "guilds": [],
+      "farming": [],
+      "slayer": [],
+      "quests": []
+    },
+    "chunks": {
+      "50,50": {
+        "chunkKey": "50,50",
+        "name": "Lumbridge",
+        "region": "Misthalin",
+        "entry": "ALLOWED",
+        "categories": {
+          "BANKS": [
+            {
+              "key": "bank:12850",
+              "name": "Lumbridge Castle",
+              "status": "ALLOWED",
+              "targetKind": "BANK"
+            }
+          ],
+          "SHOPS": [
+            {
+              "key": "shop:lumbridge general store",
+              "name": "Lumbridge General Store",
+              "status": "ALLOWED",
+              "targetKind": "SHOP"
+            }
+          ]
+        },
+        "counts": {
+          "allowed": 2,
+          "notReady": 0,
+          "locked": 0,
+          "unknown": 0
+        }
+      }
+    }
+  }
+}

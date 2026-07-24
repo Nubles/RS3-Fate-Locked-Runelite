@@ -1,6 +1,8 @@
 package com.fatelocked;
 
 import com.google.gson.Gson;
+import com.fatelocked.rules.ChunkPermissionSnapshot;
+import com.fatelocked.rules.PermissionStatus;
 import org.junit.Test;
 
 import java.io.InputStream;
@@ -52,4 +54,22 @@ public class FateLockedBundleTest
         assertEquals(FateLockedBundle.LockState.UNLOCKED,
             bundle.lockStateAt(FateLockedBundle.CHUNKED_START));
     }
-}
+
+    @Test
+    public void parsesV4PermissionRows() throws Exception
+    {
+        FateLockedBundle bundle = fixture("bundles/v4-rules.json");
+        ChunkPermissionSnapshot chunk = bundle
+            .permissionsAt(new CanonicalChunk(50, 50)).get();
+
+        assertEquals(PermissionStatus.ALLOWED, chunk.getEntry());
+        assertEquals("Lumbridge General Store",
+            chunk.getCategories().get("SHOPS").get(0).getName());
+        assertTrue(!bundle.isLegacyRules());
+    }
+
+    @Test(expected = IllegalArgumentException.class)
+    public void rejectsFutureBundle() throws Exception
+    {
+        fixture("bundles/v5-future.json");
+    }}
