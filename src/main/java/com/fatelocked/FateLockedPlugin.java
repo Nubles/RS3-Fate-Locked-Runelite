@@ -13,6 +13,10 @@ import com.fatelocked.panel.ChunkPanelViewModel;
 import com.fatelocked.panel.ChunkPanelViewModelFactory;
 import com.fatelocked.guardian.GuardedAction;
 import com.fatelocked.guardian.GuardedActionFactory;
+import com.fatelocked.guardian.GuardContext;
+import com.fatelocked.guardian.GuardResult;
+import com.fatelocked.guardian.StrictModeClickHandler;
+import com.fatelocked.guardian.StrictModeGuard;
 import com.fatelocked.detectors.BossRaidDetector;
 import com.fatelocked.detectors.CollectionLogDetector;
 import com.fatelocked.detectors.ClueCasketDetector;
@@ -43,6 +47,7 @@ import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuEntryAdded;
+import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.client.plugins.loottracker.LootReceived;
@@ -90,6 +95,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -163,6 +169,9 @@ public class FateLockedPlugin extends Plugin
     private final ChunkPanelViewModelFactory chunkPanelFactory =
         new ChunkPanelViewModelFactory();
     private final GuardedActionFactory guardedActionFactory = new GuardedActionFactory();
+    private final StrictModeClickHandler strictClickHandler =
+        new StrictModeClickHandler(new StrictModeGuard());
+    private volatile Instant rulesImportedAt;
 
     /** How long the locked-entry screen flash lasts. */
     public static final long LOCKED_FLASH_MS = 1600;
@@ -890,6 +899,39 @@ public class FateLockedPlugin extends Plugin
      * red (LOCKED) marker — the "are you sure?" before you ever click.
      */
     @Subscribe
+    public void onMenuOptionClicked(MenuOptionClicked event)
+    {
+        GuardedAction action = guardedActionFactory.from(event.getMenuEntry(), client);
+        FateLockedBundle current = bundle;
+        boolean accountMatch = currentAccountMatches(current);
+        GuardContext context = new GuardContext(
+            config.strictMode(), false, accountMatch, rulesAreFresh(),
+            new FateRuleEngine(current, accountMatch, false));
+        GuardResult result = strictClickHandler.handle(event, action, context);
+        if (result.getOutcome() != GuardResult.Outcome.BLOCK) return;
+
+        String target = action.getTarget().isEmpty()
+            ? result.getDecision().getLabel() : action.getTarget();
+        String reason = result.getDecision().getReason();
+        reason = reason == null || reason.trim().isEmpty()
+            ? "is locked" : "is " + reason;
+        ChatMessageBuilder message = new ChatMessageBuilder()
+            .append(ChatColorType.HIGHLIGHT).append("[Fate Locked] ")
+            .append(ChatColorType.NORMAL).append(
+                "Prevented: " + target + " — " + reason + ".");
+        chatMessageManager.queue(QueuedMessage.builder()
+            .type(ChatMessageType.GAMEMESSAGE)
+            .runeLiteFormattedMessage(message.build())
+            .build());
+    }
+
+    private boolean rulesAreFresh()
+    {
+        Instant stamp = config.onlineSync() ? lastTrackerSync : rulesImportedAt;
+        return stamp != null
+            && Duration.between(stamp, Instant.now()).toMinutes() < 15;
+    }
+    @Subscribe
     public void onMenuEntryAdded(MenuEntryAdded event)
     {
         if (!config.tagLockedMenus() && !config.tagLockedTeleports()) return;
@@ -1021,6 +1063,7 @@ MenuEntry entry = event.getMenuEntry();
         {
             FateLockedBundle parsed = FateLockedBundle.loadFromFile(gson, file);
             bundle = parsed;
+            rulesImportedAt = Instant.now();
             log.info("Fate Locked bundle loaded from {}: {} regions, {} unlocked",
                 file, parsed.getRegionChunks().size(), parsed.getUnlockedRegions().size());
         }
@@ -1080,6 +1123,7 @@ MenuEntry entry = event.getMenuEntry();
         {
             FateLockedBundle parsed = FateLockedBundle.loadFromJson(gson, json);
             bundle = parsed;
+            rulesImportedAt = Instant.now();
             log.info("Fate Locked bundle imported from paste: {} regions", parsed.getRegionChunks().size());
             panel.flashStatus("imported " + parsed.getRegionChunks().size() + " regions", true);
             refreshPanel();
