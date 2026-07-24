@@ -554,18 +554,21 @@ String m = raw.toLowerCase();
             }
         }
         // Slayer assignment / task-check messages mention the monster.
-        if (config.warnLockedSlayer() && m.contains("to kill"))
+        if (m.contains("to kill"))
         {
             Matcher mat = SLAYER_TASK.matcher(raw);
             if (mat.find())
             {
-slayerTask = mat.group(1).trim();
+                slayerTask = mat.group(1).trim();
                 if (slayerTaskDetector != null)
                 {
                     try { slayerTaskDetector.assignment(slayerTask, null, 0, false); }
                     catch (IOException ex) { log.debug("Could not save Slayer assignment", ex); }
                 }
-                recomputeSlayer();
+                if (config.warnLockedSlayer())
+                {
+                    recomputeSlayer();
+                }
             }
         }
     }

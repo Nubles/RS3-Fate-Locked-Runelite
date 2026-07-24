@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -70,7 +71,17 @@ public final class SlayerTaskDetector
     private void persist() throws IOException
     {
         if (path.getParent() != null) Files.createDirectories(path.getParent());
-        Files.writeString(path, gson.toJson(state), StandardCharsets.UTF_8);
+        Path temporary = path.resolveSibling(path.getFileName() + ".tmp");
+        Files.writeString(temporary, gson.toJson(state), StandardCharsets.UTF_8);
+        try
+        {
+            Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING);
+        }
+        catch (java.nio.file.AtomicMoveNotSupportedException ex)
+        {
+            Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
+        }
     }
 
     private static final class State
