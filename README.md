@@ -6,6 +6,15 @@ RuneLite's world map and main game view, shows your live run state in-game, and
 warns you — by chat, sound, screen flash, and right-click tags — before you
 touch content you haven't unlocked yet.
 
+## Release status
+
+Plugin Hub currently pins `fdca20aad7ffcf159b62210f7492f110c185afee`.
+The next maintenance submission pins
+`f450bbd87cee74d26d24061d034368ad9f0c0c86` and adds the optional
+current-chunk content overlay, individually locked-bank warning, nearest usable
+bank/shop HUD lines, and web-app-aligned lock/free-area resolution. It adds no
+gameplay automation, and Online Sync remains explicit opt-in.
+
 ## What it does
 
 - **In-game HUD.** Always-visible overlay with your keys (standard · Omni ·

@@ -19,6 +19,15 @@ To run a local build without the Plugin Hub:
    load with that flag.
 3. The plugin appears in the plugin list as **Fate Locked Ironman**.
 
+## Plugin Hub release baseline
+
+The Hub currently pins `fdca20aad7ffcf159b62210f7492f110c185afee`; the
+next maintenance submission pins `f450bbd87cee74d26d24061d034368ad9f0c0c86`.
+Keep that maintenance PR limited to the current-chunk overlay, locked-bank
+warning, nearest bank/shop HUD lines, and aligned lock/free-area resolution. It
+must not add gameplay automation, and Online Sync stays opt-in and off by
+default.
+
 ## Bundle encodings
 
 The plugin's import accepts two forms of the same v3 bundle:
